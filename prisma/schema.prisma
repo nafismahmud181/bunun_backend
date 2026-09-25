@@ -46,13 +46,39 @@ model Product {
   status         ProductStatus    @default(draft)
   seoTitle       String?          @map("seo_title")
   seoDescription String?          @map("seo_description")
+  // Lowest variant price, stored so listings can filter and sort by price in SQL.
+  // Keep in sync with refreshPriceFrom() whenever variants change.
+  priceFrom      Int              @default(0) @map("price_from")
   variants       ProductVariant[]
   images         ProductImage[]
+  sectionItems   HomepageSectionItem[]
   createdAt      DateTime         @default(now()) @map("created_at")
   updatedAt      DateTime         @updatedAt @map("updated_at")
 
   @@index([categoryId, status])
+  @@index([status, priceFrom])
   @@map("products")
+}
+
+// Hand-picked product lists on the homepage (e.g. "bestsellers", "new-arrivals").
+model HomepageSection {
+  key   String                @id
+  title String
+  items HomepageSectionItem[]
+
+  @@map("homepage_sections")
+}
+
+model HomepageSectionItem {
+  sectionKey String          @map("section_key")
+  section    HomepageSection @relation(fields: [sectionKey], references: [key], onDelete: Cascade)
+  productId  Int             @map("product_id")
+  product    Product         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  sort       Int             @default(0)
+
+  @@id([sectionKey, productId])
+  @@index([sectionKey, sort])
+  @@map("homepage_section_items")
 }
 
 model ProductVariant {

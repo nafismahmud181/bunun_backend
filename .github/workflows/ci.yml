@@ -55,3 +55,6 @@ jobs:
       - run: npm run db:deploy
       - run: npm run db:seed
       - run: npm run db:check-rls
+      - run: npm run test:integration
+        env:
+          TEST_DATABASE_URL: postgresql://bunun:bunun@localhost:5432/bunun

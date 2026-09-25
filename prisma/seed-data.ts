@@ -138,3 +138,9 @@ export const products: {
 
 // Placeholder opening stock for every variant; set real counts in the admin panel.
 export const openingStock = 20;
+
+// Homepage lists, in display order (legacy product ids), as in the old store.js.
+export const homepageSections = [
+  { key: 'bestsellers', title: 'Best Sellers', productIds: ['r1', 'c1', 'm1', 'r2'] },
+  { key: 'new-arrivals', title: 'New Arrivals', productIds: ['r2', 'b2', 'j1', 'c2'] },
+];

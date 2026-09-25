@@ -5,12 +5,14 @@ import swaggerUi from '@fastify/swagger-ui';
 import Fastify from 'fastify';
 import {
   jsonSchemaTransform,
+  jsonSchemaTransformObject,
   serializerCompiler,
   validatorCompiler,
   type ZodTypeProvider,
 } from 'fastify-type-provider-zod';
 import type { Config } from './config.js';
 import type { Db } from './lib/prisma.js';
+import { catalogueRoutes } from './routes/catalogue.js';
 import { healthRoutes } from './routes/health.js';
 
 declare module 'fastify' {
@@ -42,14 +44,15 @@ export async function buildApp(config: Config, db: Db) {
       servers: [{ url: '/' }],
     },
     transform: jsonSchemaTransform,
+    transformObject: jsonSchemaTransformObject,
   });
   if (config.NODE_ENV !== 'production') {
     await app.register(swaggerUi, { routePrefix: '/docs' });
   }
 
   await app.register(healthRoutes);
-  // Versioned API routes (catalogue, cart, orders…) register under this prefix from Phase 1.
-  await app.register(async () => {}, { prefix: '/api/v1' });
+  // Versioned API: every public route lives under /api/v1.
+  await app.register(catalogueRoutes, { prefix: '/api/v1' });
 
   return app;
 }

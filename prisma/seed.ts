@@ -1,7 +1,8 @@
 // Imports the storefront's original catalogue. Safe to run again: existing rows are
 // updated by slug/SKU, and stock is only set when a variant is first created.
 import { createPrisma } from '../src/lib/prisma.js';
-import { categories, openingStock, products, sizeUplift } from './seed-data.js';
+import { refreshPriceFrom } from '../src/services/pricing.js';
+import { categories, homepageSections, openingStock, products, sizeUplift } from './seed-data.js';
 
 try {
   process.loadEnvFile();
@@ -59,7 +60,7 @@ async function main() {
       await tx.productImage.create({ data: { productId: product.id, url: pexels(p.img), alt: p.name, sort: 0 } });
 
       for (const [step, label] of category.sizes.entries()) {
-        const sku = `${p.id.toUpperCase()}-${step + 1}`;
+        const sku = `BN-${p.id.toUpperCase()}-${step + 1}`;
         const fields = {
           label,
           price: priceFor(p.price, step),
@@ -78,6 +79,22 @@ async function main() {
             data: { variantId: variant.id, change: openingStock, reason: 'opening stock (seed)' },
           });
         }
+      }
+      await refreshPriceFrom(tx, product.id);
+    });
+  }
+
+  for (const section of homepageSections) {
+    await db.$transaction(async (tx) => {
+      await tx.homepageSection.upsert({
+        where: { key: section.key },
+        create: { key: section.key, title: section.title },
+        update: { title: section.title },
+      });
+      await tx.homepageSectionItem.deleteMany({ where: { sectionKey: section.key } });
+      for (const [sort, legacyId] of section.productIds.entries()) {
+        const product = await tx.product.findUniqueOrThrow({ where: { legacyId } });
+        await tx.homepageSectionItem.create({ data: { sectionKey: section.key, productId: product.id, sort } });
       }
     });
   }
