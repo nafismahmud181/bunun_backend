@@ -34,7 +34,10 @@ export const ProductSummary = z
     compareAtPrice: Money.nullable().describe("First variant's old price, if on sale"),
     image: Image.nullable(),
     inStock: z.boolean(),
-    firstSku: z.string().nullable().describe('SKU added by a one-click "Add to Cart"'),
+    firstVariant: z
+      .object({ sku: z.string(), label: z.string(), price: Money, stockStatus: StockStatus })
+      .nullable()
+      .describe('The variant a one-click "Add to Cart" adds'),
   })
   .meta({ id: 'ProductSummary' });
 

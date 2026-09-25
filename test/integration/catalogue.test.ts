@@ -64,7 +64,7 @@ describe.skipIf(!url)('catalogue API (database)', () => {
       compareAtPrice: 2200,
       tag: 'Best Seller',
       inStock: true,
-      firstSku: 'BN-R1-1',
+      firstVariant: { sku: 'BN-R1-1', label: '13 × 72"', price: 1850, stockStatus: 'in_stock' },
       category: { slug: 'table-runners', name: 'Table Runners' },
     });
   });

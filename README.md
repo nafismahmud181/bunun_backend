@@ -47,11 +47,30 @@ npm run dev          # http://localhost:4000
 | `db:check-rls`                        | Fail if any public table has row-level security off               |
 | `db:studio`                           | Browse the database in the browser                                |
 | `openapi`                             | Write `openapi.json` for the frontend and admin repos             |
+| `test:integration`                    | API tests against a real database (`TEST_DATABASE_URL`)           |
+
+Integration tests need a migrated and seeded database. The local Docker one works:
+
+```sh
+TEST_DATABASE_URL=postgresql://bunun:bunun@localhost:5433/bunun npm run test:integration
+```
+
+## API (v1)
+
+Public and read-only. Only active products in active categories are returned. Full details are at `/docs`.
+
+| Route                        | What it returns                                                                                                                     |
+| ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/categories`     | Active categories with product counts                                                                                               |
+| `GET /api/v1/products`       | Paginated list. Filters: `category` (slug), `q`, `maxPrice`, `section`, `legacyId`; `sort`: featured, price_asc, price_desc, newest |
+| `GET /api/v1/products/:slug` | One product with images and variants (`stockStatus`; exact stock only when 5 or fewer are left)                                     |
+| `GET /api/v1/variants?skus=` | Current price and stock for up to 50 SKUs, for refreshing carts                                                                     |
 
 ## Conventions
 
 - Money is stored as whole taka (`Int`).
 - Every stock change writes a row to `inventory_movements`.
+- `products.price_from` holds the lowest variant price; call `refreshPriceFrom()` in the same transaction whenever variants change.
 - Every migration that creates a table also runs `ALTER TABLE "<table>" ENABLE ROW LEVEL SECURITY;` (CI checks this).
 - The database is reached only through this API. Don't use Supabase's client libraries or Data API from the frontend or admin.
 - Routes validate input and output with Zod; the OpenAPI spec is generated from those schemas.

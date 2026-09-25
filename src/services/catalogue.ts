@@ -18,7 +18,10 @@ const visible = { status: 'active', category: { active: true } } satisfies Prism
 const summaryInclude = {
   category: { select: { slug: true, nameEn: true } },
   images: { orderBy: { sort: 'asc' }, take: 1, select: { url: true, alt: true } },
-  variants: { orderBy: { sort: 'asc' }, select: { sku: true, compareAtPrice: true, stock: true } },
+  variants: {
+    orderBy: { sort: 'asc' },
+    select: { sku: true, label: true, price: true, compareAtPrice: true, stock: true },
+  },
 } satisfies Prisma.ProductInclude;
 
 type SummaryRow = Prisma.ProductGetPayload<{ include: typeof summaryInclude }>;
@@ -35,7 +38,9 @@ function toSummary(p: SummaryRow): z.infer<typeof ProductSummary> {
     compareAtPrice: first?.compareAtPrice ?? null,
     image: p.images[0] ?? null,
     inStock: p.variants.some((v) => v.stock > 0),
-    firstSku: first?.sku ?? null,
+    firstVariant: first
+      ? { sku: first.sku, label: first.label, price: first.price, stockStatus: stockInfo(first.stock).stockStatus }
+      : null,
   };
 }
 
