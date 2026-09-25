@@ -44,7 +44,7 @@ jobs:
         options: >-
           --health-cmd "pg_isready -U bunun" --health-interval 5s --health-timeout 3s --health-retries 10
     env:
-      DATABASE_URL: postgresql://bunun:bunun@localhost:5432/bunun?schema=public
+      DATABASE_URL: postgresql://bunun:bunun@localhost:5432/bunun
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -54,3 +54,4 @@ jobs:
       - run: npm ci
       - run: npm run db:deploy
       - run: npm run db:seed
+      - run: npm run db:check-rls

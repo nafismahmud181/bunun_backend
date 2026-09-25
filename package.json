@@ -17,7 +17,8 @@
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio",
     "openapi": "tsx scripts/export-openapi.ts",
-    "postinstall": "prisma generate"
+    "postinstall": "prisma generate",
+    "db:check-rls": "tsx scripts/check-rls.ts"
   },
   "type": "module",
   "dependencies": {
