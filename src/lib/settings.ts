@@ -8,6 +8,11 @@ export const SETTING_DEFAULTS = {
   order_limit_per_ip_1h: 10,
   // Variants at or below this many units show in the admin's low-stock list.
   low_stock_threshold: 5,
+  // Business details printed on invoices and packing slips. REVIEW before launch.
+  store_name: 'Bunon',
+  store_address: 'House 12, Road 5, Dhanmondi, Dhaka 1205',
+  store_email: 'support@bunon.com.bd',
+  trade_licence: 'TRAD/DNCC/000000/2026',
 };
 
 const DEFAULTS = SETTING_DEFAULTS;

@@ -19,3 +19,8 @@ export function orderShippedSms(o: { orderNo: string; codDue?: number; trackUrl:
 export function orderCancelledSms(o: { orderNo: string; hotline: string }) {
   return `Bunon: Order ${o.orderNo} has been cancelled. Questions? Call ${o.hotline}.`;
 }
+
+/** For orders staff took by phone or social media: already confirmed with the customer. */
+export function manualOrderSms(o: { orderNo: string; total: number; trackUrl: string }) {
+  return `Bunon: Order ${o.orderNo} confirmed. Total ${taka(o.total)}, Cash on Delivery. Track: ${o.trackUrl}`;
+}

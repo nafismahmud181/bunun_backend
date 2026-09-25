@@ -70,7 +70,7 @@ Full details are at `/docs`. Errors return `{ statusCode, error, code, message, 
 | `GET /api/v1/products`       | Paginated list. Filters: `category` (slug), `q`, `maxPrice`, `section`, `legacyId`; `sort`: featured, price_asc, price_desc, newest |
 | `GET /api/v1/products/:slug` | One product with images and variants (`stockStatus`; exact stock only when 5 or fewer are left)                                     |
 | `GET /api/v1/variants?skus=` | Current price and stock for up to 50 SKUs                                                                                           |
-| `GET /api/v1/settings`       | Free-delivery threshold, hotline, delivery zones and fees                                                                           |
+| `GET /api/v1/settings`       | Free-delivery threshold, hotline, delivery zones and fees, store details (name, address, email, trade licence) for invoices         |
 | `GET /api/v1/locations`      | Divisions → districts → areas (upazilas and Dhaka city thanas) with each area's delivery zone                                       |
 
 **Cart and orders:** the guest cart is identified by a random token in the `X-Cart-Token` header. Only its SHA-256 hash is stored.
@@ -140,6 +140,39 @@ npm run admin:create -- --email you@example.com --reset                         
 
 Tests use an in-memory store (`STORAGE_DRIVER=memory`), so they need no Supabase keys.
 
+## Store management admin
+
+Routes under `/api/v1/admin` (details at `/docs`):
+
+- **Manual orders** (`POST /orders`, `orders:write`): for orders taken on Facebook, WhatsApp or by phone.
+  - Prices come from the catalogue; staff can only add an order discount, which can't exceed the subtotal.
+  - The delivery fee uses the subtotal after the discount.
+  - Takes an `idempotencyKey` in the body.
+  - The order starts **confirmed**, records who entered it (`orders.created_by_id`) and its source, decrements stock atomically, and queues the `order_manual` SMS.
+  - Blocked phones and online order limits don't apply, because staff are taking the order.
+- **Customers** (`customers:read` / `customers:write`):
+  - list with order count, total spent and delivery success rate
+  - detail with the last 50 orders and staff notes
+  - block and unblock (a `blocked_contacts` phone row with a reason)
+- **Settings** (`settings:write`, owner only):
+  - store details and fees: `GET`/`PATCH /settings`
+  - delivery zones: `/delivery-zones` create, edit and delete; zones in use and `outside-dhaka` can't be deleted
+  - which zone an area or a whole district uses: `PUT /delivery-zones/areas` and `PUT /delivery-zones/districts/:id`
+  - the phone and IP block list: `/blocked`
+  - Every change is audited with the old and new values, and refreshes the storefront.
+- **Staff** (`staff:manage`, owner only):
+  - Invite: returns a 16-character one-time password once; the new member sets up 2FA at first sign-in.
+  - Change role, or disable the account (both sign the person out).
+  - Reset: a new password, with 2FA set up again.
+  - Sign out everywhere.
+  - You can't change your own role or status, and the last active owner can't be demoted or disabled.
+  - Any admin can change their own password: `POST /auth/password`, at least 12 characters, and their other sessions are signed out.
+- **Dashboard** (`GET /dashboard`, `orders:read`):
+  - sales today and this month, average order, orders by status
+  - revenue per day for the last 30 days, top products and low stock
+  - Days are Bangladesh time. Cancelled, returned and refunded orders don't count.
+- **Audit log** (`GET /audit`, `audit:read`): filters for person, action (`order.` matches a whole group), entity and dates.
+
 ## SMS
 
 Checkout writes the confirmation SMS to the `sms_messages` outbox in the same transaction as the order. A worker sends due messages every 5 seconds, retrying failures after 1, 2, 4 and 8 minutes and marking them `failed` after 5 attempts. The worker runs inside the API by default (`SMS_WORKER=inline`).
@@ -150,7 +183,7 @@ Checkout writes the confirmation SMS to the `sms_messages` outbox in the same tr
 
 - Divisions, districts and upazilas come from [nuhil/bangladesh-geocode](https://github.com/nuhil/bangladesh-geocode) (MIT; see `prisma/data/bd-locations.LICENSE`).
 - The Dhaka city thanas in `prisma/data/dhaka-city.ts` are added separately, because the dataset only lists Dhaka's rural upazilas. **Review that list against your courier's coverage before launch.**
-- An area's zone is its own `zone_key`, else its district's, else `outside-dhaka`. Only the city thanas are `inside-dhaka` (৳70); everything else, including Savar and Keraniganj, is `outside-dhaka` (৳130). To add a "Dhaka suburbs" zone, insert a `delivery_zones` row and set `zone_key` on those areas.
+- An area's zone is its own `zone_key`, else its district's, else `outside-dhaka`. Only the city thanas are `inside-dhaka` (৳70); everything else, including Savar and Keraniganj, is `outside-dhaka` (৳130). Zones, and which areas and districts use them, are edited in the admin under Settings.
 
 ## Conventions
 

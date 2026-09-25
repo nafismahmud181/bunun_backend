@@ -5,10 +5,10 @@
 //
 // A random password is printed once. Two-factor authentication is set up at the first sign-in.
 // Roles: owner, manager, order_handler, content_editor.
-import { randomBytes } from 'node:crypto';
 import { parseArgs } from 'node:util';
 import type { AdminRole } from '../src/generated/prisma/client.js';
 import { audit } from '../src/lib/audit.js';
+import { generatePassword } from '../src/lib/password.js';
 import { createPrisma } from '../src/lib/prisma.js';
 import { hashPassword } from '../src/services/admin-auth.js';
 
@@ -38,9 +38,7 @@ if (!ROLES.includes(values.role as AdminRole)) {
   process.exit(1);
 }
 
-// 16 characters from an unambiguous alphabet (no 0/O, 1/l/I).
-const ALPHABET = 'abcdefghjkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
-const password = [...randomBytes(16)].map((b) => ALPHABET[b % ALPHABET.length]).join('');
+const password = generatePassword();
 
 const db = createPrisma(process.env.DATABASE_URL!);
 try {

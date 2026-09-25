@@ -20,6 +20,7 @@ import { MAX_UPLOAD_BYTES } from './services/images.js';
 import { createImageStore, type ImageStore } from './services/storage.js';
 import { adminAuthRoutes } from './routes/admin/auth.js';
 import { adminCatalogueRoutes } from './routes/admin/catalogue.js';
+import { adminManagementRoutes } from './routes/admin/management.js';
 import { adminOrderRoutes } from './routes/admin/orders.js';
 import { cartRoutes } from './routes/cart.js';
 import { catalogueRoutes } from './routes/catalogue.js';
@@ -112,6 +113,7 @@ export async function buildApp(config: Config, db: Db, images: ImageStore | null
   await app.register(adminAuthRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminOrderRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminCatalogueRoutes, { prefix: '/api/v1/admin' });
+  await app.register(adminManagementRoutes, { prefix: '/api/v1/admin' });
 
   return app;
 }

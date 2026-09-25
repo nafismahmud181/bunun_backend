@@ -11,6 +11,7 @@ export const PublicSettings = z
     freeDeliveryThreshold: Money,
     hotline: z.string(),
     zones: z.array(DeliveryZone),
+    store: z.object({ name: z.string(), address: z.string(), email: z.string(), tradeLicence: z.string() }),
   })
   .meta({ id: 'StoreSettings' });
 

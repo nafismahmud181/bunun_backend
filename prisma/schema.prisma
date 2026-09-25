@@ -225,6 +225,8 @@ model Customer {
   phone     String   @unique
   name      String
   email     String?
+  // Internal staff notes about the customer (never shown to them).
+  notes     String?
   orders    Order[]
   carts     Cart[]
   createdAt DateTime @default(now()) @map("created_at")
@@ -283,7 +285,11 @@ model Order {
   notes          String?
   ip             String?
   userAgent      String?              @map("user_agent")
+  // "web", or where staff took a manual order: "facebook", "whatsapp", "phone", "other".
   source         String               @default("web")
+  // The admin who entered a manual order.
+  createdById    Int?                 @map("created_by_id")
+  createdBy      AdminUser?           @relation("OrdersEntered", fields: [createdById], references: [id], onDelete: SetNull)
   idempotencyKey String               @unique @map("idempotency_key")
   items          OrderItem[]
   history        OrderStatusHistory[]
@@ -383,25 +389,26 @@ enum AdminRole {
 
 // Staff accounts for the admin panel. Two-factor authentication (TOTP) is mandatory.
 model AdminUser {
-  id           Int            @id @default(autoincrement())
-  email        String         @unique
-  name         String
-  passwordHash String         @map("password_hash")
-  role         AdminRole
+  id            Int            @id @default(autoincrement())
+  email         String         @unique
+  name          String
+  passwordHash  String         @map("password_hash")
+  role          AdminRole
   // TOTP secret, encrypted with ADMIN_ENCRYPTION_KEY (AES-256-GCM).
-  totpSecret   String?        @map("totp_secret")
-  totpEnabled  Boolean        @default(false) @map("totp_enabled")
+  totpSecret    String?        @map("totp_secret")
+  totpEnabled   Boolean        @default(false) @map("totp_enabled")
   // Time step of the last accepted code, so a code can't be used twice.
-  totpLastStep Int?           @map("totp_last_step")
-  active       Boolean        @default(true)
-  failedLogins Int            @default(0) @map("failed_logins")
-  lockedUntil  DateTime?      @map("locked_until")
-  lastLoginAt  DateTime?      @map("last_login_at")
-  sessions     AdminSession[]
-  auditLogs    AuditLog[]
-  orderNotes   OrderNote[]
-  createdAt    DateTime       @default(now()) @map("created_at")
-  updatedAt    DateTime       @updatedAt @map("updated_at")
+  totpLastStep  Int?           @map("totp_last_step")
+  active        Boolean        @default(true)
+  failedLogins  Int            @default(0) @map("failed_logins")
+  lockedUntil   DateTime?      @map("locked_until")
+  lastLoginAt   DateTime?      @map("last_login_at")
+  sessions      AdminSession[]
+  auditLogs     AuditLog[]
+  orderNotes    OrderNote[]
+  ordersEntered Order[]        @relation("OrdersEntered")
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
 
   @@map("admin_users")
 }

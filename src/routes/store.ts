@@ -22,6 +22,7 @@ export const storeRoutes: FastifyPluginAsyncZod = async (app) => {
       return {
         freeDeliveryThreshold: s.free_delivery_threshold,
         hotline: s.hotline,
+        store: { name: s.store_name, address: s.store_address, email: s.store_email, tradeLicence: s.trade_licence },
         zones: zones.map((z) => ({ key: z.key, name: z.name, fee: z.fee, estimate: z.estimate })),
       };
     },

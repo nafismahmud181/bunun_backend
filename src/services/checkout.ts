@@ -18,9 +18,9 @@ export interface CheckoutContext {
 
 type Receipt = z.infer<typeof OrderReceipt>;
 
-const receiptInclude = { items: { orderBy: { id: 'asc' } } } satisfies Prisma.OrderInclude;
+export const receiptInclude = { items: { orderBy: { id: 'asc' } } } satisfies Prisma.OrderInclude;
 
-function toReceipt(o: Prisma.OrderGetPayload<{ include: typeof receiptInclude }>): Receipt {
+export function toReceipt(o: Prisma.OrderGetPayload<{ include: typeof receiptInclude }>): Receipt {
   return {
     orderNo: o.orderNo,
     status: o.status,
@@ -44,7 +44,7 @@ export const trackUrl = (storefrontUrl: string, orderNo: string) =>
   `${storefrontUrl.replace(/\/$/, '')}/track?order=${encodeURIComponent(orderNo)}`;
 
 /** Order number from the database sequence: BN-<year>-<6+ digits>. */
-async function nextOrderNo(tx: Prisma.TransactionClient) {
+export async function nextOrderNo(tx: Prisma.TransactionClient) {
   const [row] = await tx.$queryRaw<{ n: bigint }[]>`SELECT nextval('order_no_seq') AS n`;
   const year = new Date().toLocaleString('en-US', { timeZone: 'Asia/Dhaka', year: 'numeric' });
   return `BN-${year}-${String(row!.n).padStart(6, '0')}`;
