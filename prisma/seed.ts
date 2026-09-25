@@ -1,8 +1,19 @@
-// Imports the storefront's original catalogue. Safe to run again: existing rows are
-// updated by slug/SKU, and stock is only set when a variant is first created.
+// Imports the storefront's original catalogue, Bangladesh locations, delivery zones and default
+// settings. Safe to run again: catalogue rows are updated by slug/SKU, stock is only set when a
+// variant is first created, and existing zones and settings (which staff may have edited) are kept.
+import { readFileSync } from 'node:fs';
 import { createPrisma } from '../src/lib/prisma.js';
 import { refreshPriceFrom } from '../src/services/pricing.js';
+import { SETTING_DEFAULTS } from '../src/lib/settings.js';
+import { DHAKA_DISTRICT_ID, dhakaCityThanas, deliveryZones } from './data/dhaka-city.js';
 import { categories, homepageSections, openingStock, products, sizeUplift } from './seed-data.js';
+
+interface LocationData {
+  divisions: { id: number; en: string; bn: string }[];
+  districts: { id: number; division: number; en: string; bn: string }[];
+  upazilas: { id: number; district: number; en: string; bn: string }[];
+}
+const locations: LocationData = JSON.parse(readFileSync(new URL('./data/bd-locations.json', import.meta.url), 'utf8'));
 
 try {
   process.loadEnvFile();
@@ -99,8 +110,41 @@ async function main() {
     });
   }
 
+  await seedLocationsAndDelivery();
+
   const [c, p, v] = await Promise.all([db.category.count(), db.product.count(), db.productVariant.count()]);
-  console.log(`Seeded ${c} categories, ${p} products, ${v} variants`);
+  const [dv, ds, ar] = await Promise.all([db.division.count(), db.district.count(), db.area.count()]);
+  console.log(`Seeded ${c} categories, ${p} products, ${v} variants; ${dv} divisions, ${ds} districts, ${ar} areas`);
+}
+
+async function seedLocationsAndDelivery() {
+  await db.division.createMany({
+    data: locations.divisions.map((d) => ({ id: d.id, nameEn: d.en, nameBn: d.bn })),
+    skipDuplicates: true,
+  });
+  await db.district.createMany({
+    data: locations.districts.map((d) => ({ id: d.id, divisionId: d.division, nameEn: d.en, nameBn: d.bn })),
+    skipDuplicates: true,
+  });
+  // City thanas first in the Dhaka list, then upazilas alphabetically.
+  await db.area.createMany({
+    data: [
+      ...dhakaCityThanas.map((name, i) => ({
+        id: 10001 + i,
+        districtId: DHAKA_DISTRICT_ID,
+        nameEn: name,
+        zoneKey: 'inside-dhaka',
+        sort: i,
+      })),
+      ...locations.upazilas.map((u) => ({ id: u.id, districtId: u.district, nameEn: u.en, nameBn: u.bn, sort: 1000 })),
+    ],
+    skipDuplicates: true,
+  });
+  await db.deliveryZone.createMany({ data: deliveryZones, skipDuplicates: true });
+  await db.setting.createMany({
+    data: Object.entries(SETTING_DEFAULTS).map(([key, value]) => ({ key, value })),
+    skipDuplicates: true,
+  });
 }
 
 try {

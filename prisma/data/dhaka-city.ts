@@ -1,0 +1,65 @@
+// Dhaka Metropolitan Police thanas, used as the "Inside Dhaka City" delivery areas.
+// The open dataset (bd-locations.json) only lists Dhaka district's rural upazilas, so these
+// are added here under district 47 (Dhaka), with ids from 10001.
+// REVIEW before launch: check the list against your courier's Dhaka coverage and add any
+// missing areas. Bangla names can be added later.
+export const DHAKA_DISTRICT_ID = 47;
+
+export const dhakaCityThanas = [
+  'Adabor',
+  'Badda',
+  'Banani',
+  'Bangshal',
+  'Bhashantek',
+  'Bhatara',
+  'Bimanbandar (Airport)',
+  'Cantonment',
+  'Chawkbazar',
+  'Dakshinkhan',
+  'Darus Salam',
+  'Demra',
+  'Dhanmondi',
+  'Gendaria',
+  'Gulshan',
+  'Hatirjheel',
+  'Hazaribagh',
+  'Jatrabari',
+  'Kadamtali',
+  'Kafrul',
+  'Kalabagan',
+  'Kamrangirchar',
+  'Khilgaon',
+  'Khilkhet',
+  'Kotwali',
+  'Lalbagh',
+  'Mirpur',
+  'Mohammadpur',
+  'Motijheel',
+  'Mugda',
+  'New Market',
+  'Pallabi',
+  'Paltan',
+  'Ramna',
+  'Rampura',
+  'Rupnagar',
+  'Sabujbagh',
+  'Shah Ali',
+  'Shahbagh',
+  'Shahjahanpur',
+  'Sher-e-Bangla Nagar',
+  'Shyampur',
+  'Sutrapur',
+  'Tejgaon',
+  'Tejgaon Industrial Area',
+  'Turag',
+  'Uttara East',
+  'Uttara West',
+  'Uttarkhan',
+  'Vatara',
+  'Wari',
+];
+
+export const deliveryZones = [
+  { key: 'inside-dhaka', name: 'Inside Dhaka City', fee: 70, estimate: '1–2 days', sort: 0 },
+  { key: 'outside-dhaka', name: 'Outside Dhaka', fee: 130, estimate: '3–5 days', sort: 1 },
+];

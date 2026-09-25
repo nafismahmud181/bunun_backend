@@ -16,6 +16,17 @@ const Env = z.object({
         .filter(Boolean),
     ),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
+  // Storefront address, used in SMS links (e.g. the track-order page).
+  STOREFRONT_URL: z.string().url().default('http://localhost:3000'),
+  // "log" writes messages to the log instead of sending them; provider drivers are added later.
+  SMS_DRIVER: z.enum(['log']).default('log'),
+  // "inline" runs the outbox worker inside the API process; "off" leaves it to `npm run worker`.
+  SMS_WORKER: z.enum(['inline', 'off']).default('inline'),
+  // Per-IP request limits. Tests turn them off.
+  RATE_LIMIT: z
+    .enum(['on', 'off'])
+    .default('on')
+    .transform((v) => v === 'on'),
 });
 
 export type Config = z.infer<typeof Env>;

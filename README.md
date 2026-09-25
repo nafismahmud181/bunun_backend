@@ -35,19 +35,20 @@ npm run dev          # http://localhost:4000
 
 ## Scripts
 
-| Script                                | What it does                                                      |
-| ------------------------------------- | ----------------------------------------------------------------- |
-| `dev`                                 | Run with reload on change                                         |
-| `build` / `start`                     | Compile to `dist/` and run it                                     |
-| `lint`, `format`, `typecheck`, `test` | Code checks (all run in CI)                                       |
-| `db:up`                               | Start the local Docker PostgreSQL (offline alternative)           |
-| `db:migrate`                          | Create and apply a migration after editing `prisma/schema.prisma` |
-| `db:deploy`                           | Apply existing migrations (Supabase, staging, production)         |
-| `db:seed`                             | Import the starting catalogue; safe to run again                  |
-| `db:check-rls`                        | Fail if any public table has row-level security off               |
-| `db:studio`                           | Browse the database in the browser                                |
-| `openapi`                             | Write `openapi.json` for the frontend and admin repos             |
-| `test:integration`                    | API tests against a real database (`TEST_DATABASE_URL`)           |
+| Script                                | What it does                                                                            |
+| ------------------------------------- | --------------------------------------------------------------------------------------- |
+| `dev`                                 | Run with reload on change                                                               |
+| `build` / `start`                     | Compile to `dist/` and run it                                                           |
+| `lint`, `format`, `typecheck`, `test` | Code checks (all run in CI)                                                             |
+| `db:up`                               | Start the local Docker PostgreSQL (offline alternative)                                 |
+| `db:migrate`                          | Create and apply a migration after editing `prisma/schema.prisma`                       |
+| `db:deploy`                           | Apply existing migrations (Supabase, staging, production)                               |
+| `db:seed`                             | Import the catalogue, locations, delivery zones and default settings; safe to run again |
+| `worker` / `dev:worker`               | Run the SMS outbox worker on its own (with `SMS_WORKER=off` on the API)                 |
+| `db:check-rls`                        | Fail if any public table has row-level security off                                     |
+| `db:studio`                           | Browse the database in the browser                                                      |
+| `openapi`                             | Write `openapi.json` for the frontend and admin repos                                   |
+| `test:integration`                    | API tests against a real database (`TEST_DATABASE_URL`)                                 |
 
 Integration tests need a migrated and seeded database. The local Docker one works:
 
@@ -57,14 +58,43 @@ TEST_DATABASE_URL=postgresql://bunun:bunun@localhost:5433/bunun npm run test:int
 
 ## API (v1)
 
-Public and read-only. Only active products in active categories are returned. Full details are at `/docs`.
+Full details are at `/docs`. Errors return `{ statusCode, error, code, message, details? }`; the storefront acts on `code` (e.g. `OUT_OF_STOCK`, `TOO_MANY_ORDERS`).
+
+**Catalogue and store:** public, read-only. Only active products in active categories are returned.
 
 | Route                        | What it returns                                                                                                                     |
 | ---------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
 | `GET /api/v1/categories`     | Active categories with product counts                                                                                               |
 | `GET /api/v1/products`       | Paginated list. Filters: `category` (slug), `q`, `maxPrice`, `section`, `legacyId`; `sort`: featured, price_asc, price_desc, newest |
 | `GET /api/v1/products/:slug` | One product with images and variants (`stockStatus`; exact stock only when 5 or fewer are left)                                     |
-| `GET /api/v1/variants?skus=` | Current price and stock for up to 50 SKUs, for refreshing carts                                                                     |
+| `GET /api/v1/variants?skus=` | Current price and stock for up to 50 SKUs                                                                                           |
+| `GET /api/v1/settings`       | Free-delivery threshold, hotline, delivery zones and fees                                                                           |
+| `GET /api/v1/locations`      | Divisions → districts → areas (upazilas and Dhaka city thanas) with each area's delivery zone                                       |
+
+**Cart and orders:** the guest cart is identified by a random token in the `X-Cart-Token` header. Only its SHA-256 hash is stored.
+
+| Route                                                               | What it does                                                                                                                                                             |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/v1/cart`                                                  | The cart with current prices and stock                                                                                                                                   |
+| `POST /api/v1/cart/items`                                           | Add units; without a token it creates the cart and returns `token` once                                                                                                  |
+| `PUT` / `DELETE /api/v1/cart/items/:sku`                            | Set a quantity (0 removes) / remove; quantities are capped at stock and 20                                                                                               |
+| `GET /api/v1/cart/quote?areaId=`                                    | Delivery fee and total for an area (free from the threshold)                                                                                                             |
+| `POST /api/v1/checkout` (headers `X-Cart-Token`, `Idempotency-Key`) | Places a Cash on Delivery order in one transaction: server prices, atomic stock decrement, sequence order number (`BN-2026-000123`), SMS queued. 201 new; 200 repeat key |
+| `GET /api/v1/orders/track?orderNo=&phone=`                          | Status timeline for the public track page. The phone must match; no name or street address is returned                                                                   |
+
+**Fraud checks at checkout:** blocked phones and IPs (`blocked_contacts` table), at most `order_limit_per_phone_24h` orders per phone and `order_limit_per_ip_1h` per IP (both in `settings`), plus per-IP rate limits (checkout 10/min, tracking 20 per 10 min, everything else 300/min).
+
+## SMS
+
+Checkout writes the confirmation SMS to the `sms_messages` outbox in the same transaction as the order. A worker sends due messages every 5 seconds, retrying failures after 1, 2, 4 and 8 minutes and marking them `failed` after 5 attempts. The worker runs inside the API by default (`SMS_WORKER=inline`).
+
+`SMS_DRIVER=log` writes messages to the log instead of sending them. To send real SMS, add a driver for your provider in `src/services/sms/` (it implements `SmsDriver.send`), register it in `src/services/sms/index.ts`, and set `SMS_DRIVER` and the provider's API key in `.env`.
+
+## Locations and delivery zones
+
+- Divisions, districts and upazilas come from [nuhil/bangladesh-geocode](https://github.com/nuhil/bangladesh-geocode) (MIT; see `prisma/data/bd-locations.LICENSE`).
+- The Dhaka city thanas in `prisma/data/dhaka-city.ts` are added separately, because the dataset only lists Dhaka's rural upazilas. **Review that list against your courier's coverage before launch.**
+- An area's zone is its own `zone_key`, else its district's, else `outside-dhaka`. Only the city thanas are `inside-dhaka` (৳70); everything else, including Savar and Keraniganj, is `outside-dhaka` (৳130). To add a "Dhaka suburbs" zone, insert a `delivery_zones` row and set `zone_key` on those areas.
 
 ## Conventions
 

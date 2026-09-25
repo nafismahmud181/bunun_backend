@@ -32,28 +32,28 @@ model Category {
 }
 
 model Product {
-  id             Int              @id @default(autoincrement())
-  slug           String           @unique
+  id             Int                   @id @default(autoincrement())
+  slug           String                @unique
   // Old storefront id (e.g. "r1"), kept so /product/r1 can redirect to the slug URL.
-  legacyId       String?          @unique @map("legacy_id")
-  nameEn         String           @map("name_en")
-  nameBn         String?          @map("name_bn")
-  descriptionEn  String?          @map("description_en")
-  descriptionBn  String?          @map("description_bn")
-  categoryId     Int              @map("category_id")
-  category       Category         @relation(fields: [categoryId], references: [id])
+  legacyId       String?               @unique @map("legacy_id")
+  nameEn         String                @map("name_en")
+  nameBn         String?               @map("name_bn")
+  descriptionEn  String?               @map("description_en")
+  descriptionBn  String?               @map("description_bn")
+  categoryId     Int                   @map("category_id")
+  category       Category              @relation(fields: [categoryId], references: [id])
   tag            String?
-  status         ProductStatus    @default(draft)
-  seoTitle       String?          @map("seo_title")
-  seoDescription String?          @map("seo_description")
+  status         ProductStatus         @default(draft)
+  seoTitle       String?               @map("seo_title")
+  seoDescription String?               @map("seo_description")
   // Lowest variant price, stored so listings can filter and sort by price in SQL.
   // Keep in sync with refreshPriceFrom() whenever variants change.
-  priceFrom      Int              @default(0) @map("price_from")
+  priceFrom      Int                   @default(0) @map("price_from")
   variants       ProductVariant[]
   images         ProductImage[]
   sectionItems   HomepageSectionItem[]
-  createdAt      DateTime         @default(now()) @map("created_at")
-  updatedAt      DateTime         @updatedAt @map("updated_at")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
 
   @@index([categoryId, status])
   @@index([status, priceFrom])
@@ -93,6 +93,8 @@ model ProductVariant {
   weightGrams    Int?                @map("weight_grams")
   sort           Int                 @default(0)
   movements      InventoryMovement[]
+  cartItems      CartItem[]
+  orderItems     OrderItem[]
   createdAt      DateTime            @default(now()) @map("created_at")
   updatedAt      DateTime            @updatedAt @map("updated_at")
 
@@ -120,9 +122,251 @@ model InventoryMovement {
   change    Int
   reason    String
   orderId   Int?           @map("order_id")
+  order     Order?         @relation(fields: [orderId], references: [id], onDelete: SetNull)
   adminId   Int?           @map("admin_id")
   createdAt DateTime       @default(now()) @map("created_at")
 
   @@index([variantId, createdAt])
   @@map("inventory_movements")
+}
+
+// ---------- Locations and delivery ----------
+// Divisions, districts and upazilas come from the open nuhil/bangladesh-geocode dataset (MIT),
+// keeping the dataset's ids. Dhaka city thanas are added separately, with ids from 10001.
+
+model Division {
+  id        Int        @id
+  nameEn    String     @map("name_en")
+  nameBn    String?    @map("name_bn")
+  districts District[]
+
+  @@map("divisions")
+}
+
+model District {
+  id         Int      @id
+  divisionId Int      @map("division_id")
+  division   Division @relation(fields: [divisionId], references: [id])
+  nameEn     String   @map("name_en")
+  nameBn     String?  @map("name_bn")
+  // Delivery zone for areas in this district that don't set their own.
+  zoneKey    String?  @map("zone_key")
+  areas      Area[]
+
+  @@index([divisionId])
+  @@map("districts")
+}
+
+// An upazila or city thana.
+model Area {
+  id         Int      @id
+  districtId Int      @map("district_id")
+  district   District @relation(fields: [districtId], references: [id])
+  nameEn     String   @map("name_en")
+  nameBn     String?  @map("name_bn")
+  zoneKey    String?  @map("zone_key")
+  sort       Int      @default(0)
+
+  @@index([districtId])
+  @@map("areas")
+}
+
+model DeliveryZone {
+  key      String @id
+  name     String
+  fee      Int
+  estimate String
+  sort     Int    @default(0)
+
+  @@map("delivery_zones")
+}
+
+// Store-wide settings as key and JSON value (free-delivery threshold, hotline, and so on).
+model Setting {
+  key       String   @id
+  value     Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("settings")
+}
+
+// ---------- Carts ----------
+
+// A guest cart. The browser keeps a random token; only its SHA-256 hash is stored.
+model Cart {
+  id         Int        @id @default(autoincrement())
+  tokenHash  String     @unique @map("token_hash")
+  customerId Int?       @map("customer_id")
+  customer   Customer?  @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  items      CartItem[]
+  createdAt  DateTime   @default(now()) @map("created_at")
+  updatedAt  DateTime   @updatedAt @map("updated_at")
+
+  @@index([updatedAt])
+  @@map("carts")
+}
+
+model CartItem {
+  cartId    Int            @map("cart_id")
+  cart      Cart           @relation(fields: [cartId], references: [id], onDelete: Cascade)
+  variantId Int            @map("variant_id")
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  qty       Int
+  addedAt   DateTime       @default(now()) @map("added_at")
+
+  @@id([cartId, variantId])
+  @@map("cart_items")
+}
+
+// ---------- Customers and orders ----------
+
+model Customer {
+  id        Int      @id @default(autoincrement())
+  phone     String   @unique
+  name      String
+  email     String?
+  orders    Order[]
+  carts     Cart[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("customers")
+}
+
+enum OrderStatus {
+  pending
+  confirmed
+  processing
+  shipped
+  delivered
+  cancelled
+  returned
+  refunded
+}
+
+enum PaymentStatus {
+  unpaid
+  partially_paid
+  paid
+  refunded
+}
+
+enum PaymentMethod {
+  cod
+  bkash
+  nagad
+  card
+}
+
+model Order {
+  id             Int                  @id @default(autoincrement())
+  // From the order_no_seq sequence, e.g. BN-2026-000123.
+  orderNo        String               @unique @map("order_no")
+  customerId     Int                  @map("customer_id")
+  customer       Customer             @relation(fields: [customerId], references: [id])
+  // Contact and address as entered, kept even if the customer or locations change later.
+  name           String
+  phone          String
+  divisionName   String               @map("division_name")
+  districtName   String               @map("district_name")
+  areaName       String               @map("area_name")
+  areaId         Int?                 @map("area_id")
+  addressLine    String               @map("address_line")
+  zoneKey        String               @map("zone_key")
+  subtotal       Int
+  discount       Int                  @default(0)
+  deliveryFee    Int                  @map("delivery_fee")
+  total          Int
+  status         OrderStatus          @default(pending)
+  paymentStatus  PaymentStatus        @default(unpaid) @map("payment_status")
+  paymentMethod  PaymentMethod        @map("payment_method")
+  notes          String?
+  ip             String?
+  userAgent      String?              @map("user_agent")
+  source         String               @default("web")
+  idempotencyKey String               @unique @map("idempotency_key")
+  items          OrderItem[]
+  history        OrderStatusHistory[]
+  smsMessages    SmsMessage[]
+  movements      InventoryMovement[]
+  createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+
+  @@index([phone, createdAt])
+  @@index([ip, createdAt])
+  @@index([status, createdAt])
+  @@map("orders")
+}
+
+// Name, SKU, label and price are copied at order time.
+model OrderItem {
+  id          Int             @id @default(autoincrement())
+  orderId     Int             @map("order_id")
+  order       Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  variantId   Int?            @map("variant_id")
+  variant     ProductVariant? @relation(fields: [variantId], references: [id], onDelete: SetNull)
+  sku         String
+  productName String          @map("product_name")
+  label       String
+  unitPrice   Int             @map("unit_price")
+  qty         Int
+  lineTotal   Int             @map("line_total")
+
+  @@index([orderId])
+  @@map("order_items")
+}
+
+model OrderStatusHistory {
+  id         Int          @id @default(autoincrement())
+  orderId    Int          @map("order_id")
+  order      Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  fromStatus OrderStatus? @map("from_status")
+  toStatus   OrderStatus  @map("to_status")
+  note       String?
+  // "system", "customer", or an admin reference once admin accounts exist.
+  actor      String
+  createdAt  DateTime     @default(now()) @map("created_at")
+
+  @@index([orderId, createdAt])
+  @@map("order_status_history")
+}
+
+// Phone numbers or IPs that may not place orders online.
+model BlockedContact {
+  id        Int      @id @default(autoincrement())
+  kind      String // "phone" or "ip"
+  value     String
+  reason    String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@unique([kind, value])
+  @@map("blocked_contacts")
+}
+
+// ---------- Messaging ----------
+
+enum SmsStatus {
+  queued
+  sent
+  failed
+}
+
+// Outbox: rows are written in the same transaction as the order, then sent by the worker.
+model SmsMessage {
+  id            Int       @id @default(autoincrement())
+  to            String
+  body          String
+  template      String
+  status        SmsStatus @default(queued)
+  attempts      Int       @default(0)
+  lastError     String?   @map("last_error")
+  providerRef   String?   @map("provider_ref")
+  orderId       Int?      @map("order_id")
+  order         Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  nextAttemptAt DateTime  @default(now()) @map("next_attempt_at")
+  sentAt        DateTime? @map("sent_at")
+  createdAt     DateTime  @default(now()) @map("created_at")
+
+  @@index([status, nextAttemptAt])
+  @@map("sms_messages")
 }
