@@ -6,6 +6,8 @@ export const SETTING_DEFAULTS = {
   hotline: '09612-345678',
   order_limit_per_phone_24h: 5,
   order_limit_per_ip_1h: 10,
+  // Variants at or below this many units show in the admin's low-stock list.
+  low_stock_threshold: 5,
 };
 
 const DEFAULTS = SETTING_DEFAULTS;

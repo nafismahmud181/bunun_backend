@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { createPrisma } from '../src/lib/prisma.js';
 import { refreshPriceFrom } from '../src/services/pricing.js';
 import { SETTING_DEFAULTS } from '../src/lib/settings.js';
+import { slugify } from '../src/lib/slug.js';
 import { DHAKA_DISTRICT_ID, dhakaCityThanas, deliveryZones } from './data/dhaka-city.js';
 import { categories, homepageSections, openingStock, products, sizeUplift } from './seed-data.js';
 
@@ -22,15 +23,6 @@ try {
 }
 
 const db = createPrisma(process.env.DATABASE_URL!);
-
-const slugify = (s: string) =>
-  s
-    .normalize('NFKD')
-    .replace(/[̀-ͯ]/g, '')
-    .replace(/&/g, ' and ')
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
 
 const pexels = (id: number, w = 1200) =>
   `https://images.pexels.com/photos/${id}/pexels-photo-${id}.jpeg?auto=compress&cs=tinysrgb&w=${w}`;

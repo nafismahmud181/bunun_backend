@@ -45,6 +45,8 @@ npm run dev          # http://localhost:4000
 | `db:deploy`                           | Apply existing migrations (Supabase, staging, production)                               |
 | `db:seed`                             | Import the catalogue, locations, delivery zones and default settings; safe to run again |
 | `worker` / `dev:worker`               | Run the SMS outbox worker on its own (with `SMS_WORKER=off` on the API)                 |
+| `admin:create`                        | Create an admin account, or `--reset` one's password and two-factor setup               |
+| `storage:setup`                       | Create (or update) the public image bucket in Supabase Storage                          |
 | `db:check-rls`                        | Fail if any public table has row-level security off                                     |
 | `db:studio`                           | Browse the database in the browser                                                      |
 | `openapi`                             | Write `openapi.json` for the frontend and admin repos                                   |
@@ -83,6 +85,60 @@ Full details are at `/docs`. Errors return `{ statusCode, error, code, message, 
 | `GET /api/v1/orders/track?orderNo=&phone=`                          | Status timeline for the public track page. The phone must match; no name or street address is returned                                                                   |
 
 **Fraud checks at checkout:** blocked phones and IPs (`blocked_contacts` table), at most `order_limit_per_phone_24h` orders per phone and `order_limit_per_ip_1h` per IP (both in `settings`), plus per-IP rate limits (checkout 10/min, tracking 20 per 10 min, everything else 300/min).
+
+## Admin accounts and sign-in
+
+Create the first owner (a random password is printed once):
+
+```sh
+npm run admin:create -- --email you@example.com --name "Your Name"            # role defaults to owner
+npm run admin:create -- --email staff@example.com --name "Staff" --role order_handler
+npm run admin:create -- --email you@example.com --reset                         # new password, 2FA set up again
+```
+
+- **Sign-in:** `POST /api/v1/admin/auth/login` (email + password) returns a short-lived token. Then `POST /api/v1/admin/auth/2fa` with the authenticator code (sent with that token) returns the session token. The first sign-in also returns a secret to set up an authenticator app.
+- **Two-factor authentication is mandatory.** TOTP secrets are stored encrypted with `ADMIN_ENCRYPTION_KEY` (AES-256-GCM). A code can't be used twice. Keep the key safe: without it, every admin must set up two-factor authentication again (`--reset`).
+- **Sessions** are random tokens (only their hash is stored) sent as `Authorization: Bearer`. They last at most 12 hours and end after 2 hours without activity. Sign-out deletes them.
+- **Protection:** 10 wrong passwords lock the account for 15 minutes; 5 wrong codes end the half-signed-in session; sign-in is limited to 5 attempts a minute per IP.
+- **Roles:** owner (everything), manager, order_handler, content_editor. Routes check permissions (`src/lib/permissions.ts`), never roles.
+- **Audit log:** every admin action and sign-in event is written to `audit_logs` in the same transaction as the change.
+
+**Admin orders API** (`/api/v1/admin/orders`): search and filter (status, "open", payment, phone/name/order number, dates), CSV export, detail with customer history, status changes (`pending → confirmed → processing → shipped → delivered`, with cancel/return/refund branches), staff notes, and contact/address corrections before packing.
+
+- **Cancelling** puts the stock back; **returns** do too unless marked damaged.
+- **Delivered** Cash on Delivery orders are marked paid.
+- **Confirm, ship and cancel** send the customer an SMS.
+
+`TRUST_PROXY` (default `loopback`) decides whose `X-Forwarded-For` is believed. Keep the API behind a proxy on the same machine (Caddy), and never set it to `true` on a server anyone can reach directly: that would let visitors fake their IP past rate limits.
+
+## Catalogue admin and images
+
+`/api/v1/admin/categories`, `/products` and `/inventory` (permissions `products:read`, `products:write`, `inventory:write`):
+
+- **Categories:**
+  - create, rename (with Bangla name), change the web address, show or hide, reorder, and upload an image
+  - only empty categories can be deleted
+- **Products:**
+  - new products start as **drafts**
+  - publishing needs at least one variant; archiving takes the product off the store
+  - products can be duplicated (as a draft)
+  - the slug is generated from the name, and a clash returns `409 SLUG_TAKEN`
+- **Variants:**
+  - SKUs are generated as `BN-P<product>-<n>` when left out
+  - the old price must be higher than the price
+  - `products.price_from` is kept up to date
+  - stock can't be edited here: only the opening stock on creation, then inventory adjustments
+- **Inventory:** add or remove units, or record a stocktake count, always with a reason. The change is a single atomic statement, and each one writes an `inventory_movements` row with who did it. The low-stock list uses the `low_stock_threshold` setting (default 5).
+- **Storefront refresh:** after any catalogue change, the API calls the storefront's `POST /api/revalidate` (with `REVALIDATE_SECRET`), so the storefront shows it straight away.
+
+**Images** (`POST /admin/products/:id/images`, multipart field `file`):
+
+- **Processing:** the upload is checked to be a real image (JPEG, PNG, WebP, AVIF, GIF or TIFF, at least 300 × 300, up to 10 MB). It is straightened (phone photos), stripped of metadata such as GPS location, and stored as **WebP at 400, 800 and 1200 px**.
+- **Where:** a public Supabase Storage bucket (`npm run storage:setup`), written with `SUPABASE_SECRET_KEY`. The database keeps the `…-1200.webp` URL; the storefront and admin swap the suffix for smaller sizes.
+- **Deletion:** removing a photo deletes all three sizes, unless another product (a duplicate) still uses it.
+- **CDN caching:** files are served with a one-year cache (every file name is unique), so a deleted photo can still be reachable through Supabase's CDN for a while after it is removed from storage.
+
+Tests use an in-memory store (`STORAGE_DRIVER=memory`), so they need no Supabase keys.
 
 ## SMS
 
