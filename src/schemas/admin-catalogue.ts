@@ -23,6 +23,25 @@ const OptionalText = (max: number) =>
 
 // ---------- Categories ----------
 
+export const FIELD_KEY = /^[a-z][a-z0-9_]{0,29}$/;
+/** The shipping weight: stored in product_variants.weight_grams rather than in attributes. */
+export const WEIGHT_FIELD = 'weight';
+
+export const VariantField = z
+  .object({
+    key: z
+      .string()
+      .regex(FIELD_KEY, 'Keys use lowercase letters, numbers and _')
+      .describe('"weight" is the shipping weight in grams'),
+    label: z.string().trim().min(1).max(30),
+    unit: z.string().trim().max(12).nullable().optional().describe('Shown after the value, e.g. "in" or "cm"'),
+  })
+  .meta({ id: 'VariantField' });
+export const VariantFields = z
+  .array(VariantField)
+  .max(6)
+  .refine((f) => new Set(f.map((x) => x.key)).size === f.length, { message: 'Each field needs its own name.' });
+
 export const AdminCategory = z
   .object({
     id: z.number().int(),
@@ -33,6 +52,8 @@ export const AdminCategory = z
     sort: z.number().int(),
     active: z.boolean(),
     productCount: z.number().int(),
+    optionLabel: z.string().describe('What one option is called, e.g. "Size" or "Dimensions"'),
+    variantFields: z.array(VariantField),
   })
   .meta({ id: 'AdminCategory' });
 
@@ -43,7 +64,14 @@ export const CategoryCreate = z.object({
   active: z.boolean().default(true),
 });
 export const CategoryUpdate = z
-  .object({ name: z.string().trim().min(2).max(80), nameBn: OptionalText(80), slug: Slug, active: z.boolean() })
+  .object({
+    name: z.string().trim().min(2).max(80),
+    nameBn: OptionalText(80),
+    slug: Slug,
+    active: z.boolean(),
+    optionLabel: z.string().trim().min(1).max(30),
+    variantFields: VariantFields,
+  })
   .partial()
   .refine((b) => Object.keys(b).length > 0, 'Nothing to change');
 export const ReorderBody = z.object({ ids: z.array(z.number().int().positive()).min(1).max(500) });
@@ -87,6 +115,7 @@ export const AdminVariant = z
     compareAtPrice: Money.nullable(),
     stock: z.number().int(),
     weightGrams: z.number().int().nullable(),
+    attributes: z.record(z.string(), z.string()).describe("Values for the category's option fields"),
     sort: z.number().int(),
   })
   .meta({ id: 'AdminVariant' });
@@ -146,6 +175,10 @@ const Sku = z
   .toUpperCase()
   .regex(/^[A-Z0-9]+(-[A-Z0-9]+)*$/, 'Use letters, numbers and hyphens')
   .max(64);
+/** Option field values, e.g. { dimensions: "16 × 72" }; empty values are dropped. */
+const Attributes = z
+  .record(z.string().regex(FIELD_KEY), z.string().trim().max(80))
+  .refine((a) => Object.keys(a).length <= 6, { message: 'At most 6 details per option.' });
 export const VariantCreate = z.object({
   label: z.string().trim().min(1).max(60),
   sku: Sku.optional().describe('Left out: generated from the product'),
@@ -153,6 +186,7 @@ export const VariantCreate = z.object({
   compareAtPrice: Money.positive().nullable().optional(),
   weightGrams: z.number().int().positive().max(100_000).nullable().optional(),
   openingStock: z.number().int().min(0).max(100_000).default(0),
+  attributes: Attributes.optional(),
 });
 export const VariantUpdate = z
   .object({
@@ -161,6 +195,7 @@ export const VariantUpdate = z
     price: Money.positive(),
     compareAtPrice: Money.positive().nullable(),
     weightGrams: z.number().int().positive().max(100_000).nullable(),
+    attributes: Attributes,
   })
   .partial()
   .refine((b) => Object.keys(b).length > 0, 'Nothing to change');

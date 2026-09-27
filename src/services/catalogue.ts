@@ -1,6 +1,8 @@
 import type { z } from 'zod';
 import type { Prisma } from '../generated/prisma/client.js';
 import type { Db } from '../lib/prisma.js';
+import { WEIGHT_FIELD } from '../schemas/admin-catalogue.js';
+import { categoryFields } from '../lib/variant-fields.js';
 import {
   LOW_STOCK,
   type CartVariant,
@@ -115,13 +117,24 @@ export async function getProduct(db: Db, slug: string): Promise<z.infer<typeof P
     where: { ...visible, slug },
     include: {
       ...summaryInclude,
+      category: { select: { slug: true, nameEn: true, optionLabel: true, variantFields: true } },
       images: { orderBy: { sort: 'asc' }, select: { url: true, alt: true } },
       variants: { orderBy: { sort: 'asc' } },
     },
   });
   if (!p) return null;
+  // The shipping weight is for couriers, not shoppers; the other fields are shown with their unit.
+  const fields = categoryFields(p.category.variantFields).filter((f) => f.key !== WEIGHT_FIELD);
+  const detailsOf = (attributes: unknown) => {
+    const values = (attributes ?? {}) as Record<string, unknown>;
+    return fields.flatMap((f) => {
+      const v = values[f.key];
+      return typeof v === 'string' && v.trim() ? [{ label: f.label, value: f.unit ? `${v} ${f.unit}` : v }] : [];
+    });
+  };
   return {
     ...toSummary({ ...p, images: p.images.slice(0, 1) }),
+    optionLabel: p.category.optionLabel,
     description: p.descriptionEn,
     images: p.images,
     variants: p.variants.map((v) => ({
@@ -130,6 +143,7 @@ export async function getProduct(db: Db, slug: string): Promise<z.infer<typeof P
       price: v.price,
       compareAtPrice: v.compareAtPrice,
       ...stockInfo(v.stock),
+      details: detailsOf(v.attributes),
     })),
     seoTitle: p.seoTitle,
     seoDescription: p.seoDescription,

@@ -12,8 +12,11 @@ import type {
   ProductCreate,
   ProductUpdate,
   VariantCreate,
+  VariantField,
   VariantUpdate,
 } from '../schemas/admin-catalogue.js';
+import { WEIGHT_FIELD } from '../schemas/admin-catalogue.js';
+import { categoryFields } from '../lib/variant-fields.js';
 import { refreshPriceFrom } from './pricing.js';
 
 export interface ActionContext {
@@ -32,6 +35,21 @@ function conflict(err: unknown, field: string, message: string): never {
 
 const slugFor = (given: string | undefined, name: string, fallback: string) => given || slugify(name) || fallback;
 
+type Field = z.infer<typeof VariantField>;
+
+/**
+ * Keeps only values for the category's own fields (not the weight, which has its own column), and
+ * drops empty ones.
+ */
+function cleanAttributes(input: Record<string, string>, fields: Field[]) {
+  const keys = new Set(fields.map((f) => f.key).filter((k) => k !== WEIGHT_FIELD));
+  return Object.fromEntries(Object.entries(input).filter(([k, v]) => keys.has(k) && v.trim() !== ''));
+}
+const attributesOf = (value: unknown): Record<string, string> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).filter((e): e is [string, string] => typeof e[1] === 'string'))
+    : {};
+
 // ---------- Categories ----------
 
 export async function listAdminCategories(db: Db) {
@@ -48,6 +66,8 @@ export async function listAdminCategories(db: Db) {
     sort: c.sort,
     active: c.active,
     productCount: c._count.products,
+    optionLabel: c.optionLabel,
+    variantFields: categoryFields(c.variantFields),
   }));
 }
 
@@ -88,6 +108,8 @@ export async function updateCategory(db: Db, id: number, input: z.infer<typeof C
         ...(input.nameBn !== undefined && { nameBn: input.nameBn }),
         ...(input.slug !== undefined && { slug: input.slug }),
         ...(input.active !== undefined && { active: input.active }),
+        ...(input.optionLabel !== undefined && { optionLabel: input.optionLabel }),
+        ...(input.variantFields !== undefined && { variantFields: input.variantFields as Prisma.InputJsonValue }),
       },
     });
   } catch (err) {
@@ -217,6 +239,7 @@ export async function getAdminProduct(db: Db, id: number): Promise<z.infer<typeo
       compareAtPrice: v.compareAtPrice,
       stock: v.stock,
       weightGrams: v.weightGrams,
+      attributes: attributesOf(v.attributes),
       sort: v.sort,
     })),
     images: p.images.map((i) => ({ id: i.id, url: i.url, alt: i.alt, sort: i.sort })),
@@ -319,6 +342,7 @@ export async function duplicateProduct(db: Db, id: number, ctx: ActionContext) {
             price: v.price,
             compareAtPrice: v.compareAtPrice,
             weightGrams: v.weightGrams,
+            attributes: v.attributes as Prisma.InputJsonValue,
             sort: v.sort,
             stock: 0,
           })),
@@ -340,6 +364,44 @@ export async function duplicateProduct(db: Db, id: number, ctx: ActionContext) {
   return copy.id;
 }
 
+/**
+ * Deletes a product that no order includes, with its options, photos, stock history, reviews and
+ * homepage picks. A product that has been ordered can only be archived, so sales history stays
+ * complete. Returns the photo URLs no other product uses, for the caller to delete from storage.
+ */
+export async function deleteProduct(db: Db, id: number, ctx: ActionContext) {
+  const p = await db.product.findUnique({
+    where: { id },
+    include: { images: true, reviews: { include: { images: true } } },
+  });
+  if (!p) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
+  const ordered = await db.orderItem.count({ where: { variant: { productId: id } } });
+  if (ordered > 0)
+    throw new ApiError(
+      409,
+      'PRODUCT_ORDERED',
+      `This product is in ${ordered} order${ordered === 1 ? '' : 's'}, so it can't be deleted. Archive it to take it off the store.`,
+    );
+  await db.$transaction(async (tx) => {
+    await tx.inventoryMovement.deleteMany({ where: { variant: { productId: id } } });
+    await tx.cartItem.deleteMany({ where: { variant: { productId: id } } });
+    await tx.product.delete({ where: { id } }); // options, photos, reviews and homepage picks cascade
+    await audit(tx, {
+      adminId: ctx.admin.id,
+      action: 'product.delete',
+      entityType: 'product',
+      entityId: id,
+      ip: ctx.ip,
+      data: { name: p.nameEn, slug: p.slug, status: p.status },
+    });
+  });
+  const urls = [...p.images.map((i) => i.url), ...p.reviews.flatMap((r) => r.images.map((i) => i.url))];
+  const shared = new Set(
+    (await db.productImage.findMany({ where: { url: { in: urls } }, select: { url: true } })).map((i) => i.url),
+  );
+  return [...new Set(urls)].filter((u) => !shared.has(u));
+}
+
 // ---------- Variants ----------
 
 async function nextSku(db: Pick<Db, 'productVariant'>, productId: number) {
@@ -355,8 +417,8 @@ export async function createVariant(
   input: z.infer<typeof VariantCreate>,
   ctx: ActionContext,
 ) {
-  if (!(await db.product.findUnique({ where: { id: productId } })))
-    throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
+  const product = await db.product.findUnique({ where: { id: productId }, include: { category: true } });
+  if (!product) throw new ApiError(404, 'NOT_FOUND', 'Product not found.');
   if (input.compareAtPrice && input.compareAtPrice <= input.price)
     throw new ApiError(400, 'BAD_COMPARE_PRICE', 'The old price must be higher than the price.');
   const sku = input.sku ?? (await nextSku(db, productId));
@@ -371,6 +433,7 @@ export async function createVariant(
           price: input.price,
           compareAtPrice: input.compareAtPrice ?? null,
           weightGrams: input.weightGrams ?? null,
+          attributes: cleanAttributes(input.attributes ?? {}, categoryFields(product.category.variantFields)),
           stock: input.openingStock,
           sort: (last._max.sort ?? -1) + 1,
         },
@@ -401,15 +464,25 @@ export async function updateVariant(
   input: z.infer<typeof VariantUpdate>,
   ctx: ActionContext,
 ) {
-  const v = await db.productVariant.findFirst({ where: { id: variantId, productId } });
+  const v = await db.productVariant.findFirst({
+    where: { id: variantId, productId },
+    include: { product: { include: { category: true } } },
+  });
   if (!v) throw new ApiError(404, 'NOT_FOUND', 'Variant not found.');
+  const { attributes, ...rest } = input;
+  const data: Prisma.ProductVariantUpdateInput = {
+    ...rest,
+    ...(attributes !== undefined && {
+      attributes: cleanAttributes(attributes, categoryFields(v.product.category.variantFields)),
+    }),
+  };
   const price = input.price ?? v.price;
   const compare = input.compareAtPrice === undefined ? v.compareAtPrice : input.compareAtPrice;
   if (compare && compare <= price)
     throw new ApiError(400, 'BAD_COMPARE_PRICE', 'The old price must be higher than the price.');
   try {
     await db.$transaction(async (tx) => {
-      await tx.productVariant.update({ where: { id: variantId }, data: input });
+      await tx.productVariant.update({ where: { id: variantId }, data });
       await refreshPriceFrom(tx, productId);
       await audit(tx, {
         adminId: ctx.admin.id,

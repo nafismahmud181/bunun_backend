@@ -188,6 +188,37 @@ describe.skipIf(!url)('admin catalogue API (database)', () => {
     ).toBeGreaterThanOrEqual(5);
   });
 
+  it('lets each category choose what its options record, e.g. dimensions instead of weight', async () => {
+    const cats = (await call('GET', '/admin/categories', editor)).body;
+    expect(cats.find((c: { id: number }) => c.id === categoryId)).toMatchObject({
+      optionLabel: 'Size',
+      variantFields: [{ key: 'weight', label: 'Weight', unit: 'g' }],
+    });
+    const dup = await call('PATCH', `/admin/categories/${categoryId}`, editor, {
+      variantFields: [
+        { key: 'dimensions', label: 'Dimensions' },
+        { key: 'dimensions', label: 'Size' },
+      ],
+    });
+    expect(dup.status).toBe(400);
+    await call('PATCH', `/admin/categories/${categoryId}`, editor, {
+      optionLabel: 'Length',
+      variantFields: [
+        { key: 'dimensions', label: 'Dimensions', unit: 'in' },
+        { key: 'colour', label: 'Colour' },
+      ],
+    });
+    const variantId = (await call('GET', `/admin/products/${productId}`, editor)).body.variants[0].id;
+    const saved = await call('PATCH', `/admin/products/${productId}/variants/${variantId}`, editor, {
+      attributes: { dimensions: '16 × 72', colour: '', other: 'dropped' },
+    });
+    expect(saved.body.variants[0].attributes).toEqual({ dimensions: '16 × 72' });
+    const live = (await call('GET', `/products/${slug}`, undefined)).body;
+    expect(live.optionLabel).toBe('Length');
+    expect(live.variants[0].details).toEqual([{ label: 'Dimensions', value: '16 × 72 in' }]);
+    expect(live.variants[1].details).toEqual([]);
+  });
+
   it('checks uploads and manages photos', async () => {
     const notImage = await uploadTo(`/admin/products/${productId}/images`, editor, Buffer.from('hello'), 'image/png');
     expect([notImage.status, notImage.body.code]).toEqual([400, 'NOT_AN_IMAGE']);
@@ -223,6 +254,56 @@ describe.skipIf(!url)('admin catalogue API (database)', () => {
     await call('DELETE', `/admin/products/${productId}/images/${same.id}`, editor);
     expect(store.files.has(path)).toBe(false); // last user gone: all sizes deleted
     expect(store.files.has(path.replace('-1200.webp', '-400.webp'))).toBe(false);
+  });
+
+  it('deletes a product no order includes, keeping photos other products still use', async () => {
+    const copy = (await call('POST', `/admin/products/${productId}/duplicate`, editor)).body;
+    const shared = copy.images[0].url as string;
+    expect((await call('DELETE', `/admin/products/${copy.id}`, handler)).status).toBe(403);
+    expect((await call('DELETE', `/admin/products/${copy.id}`, editor)).status).toBe(204);
+    expect(await db!.product.findUnique({ where: { id: copy.id } })).toBeNull();
+    expect(store.files.has(shared.replace('https://storage.test/', ''))).toBe(true); // the original still uses it
+    const log = await db!.auditLog.findFirst({ where: { action: 'product.delete', entityId: String(copy.id) } });
+    expect(log?.data).toMatchObject({ status: 'draft' });
+
+    // Once a product is in an order it can only be archived.
+    const variant = await db!.productVariant.findFirstOrThrow({ where: { productId } });
+    const customer = await db!.customer.create({
+      data: { phone: `0199${Date.now().toString().slice(-7)}`, name: 'Test' },
+    });
+    const order = await db!.order.create({
+      data: {
+        orderNo: `TEST-${tag}`,
+        customerId: customer.id,
+        name: 'Test',
+        phone: customer.phone,
+        divisionName: 'Dhaka',
+        districtName: 'Dhaka',
+        areaName: 'Dhanmondi',
+        addressLine: 'House 1',
+        zoneKey: 'inside-dhaka',
+        subtotal: variant.price,
+        deliveryFee: 0,
+        total: variant.price,
+        paymentMethod: 'cod',
+        idempotencyKey: `test-${tag}`,
+        items: {
+          create: {
+            variantId: variant.id,
+            sku: variant.sku,
+            productName: 'x',
+            label: variant.label,
+            unitPrice: variant.price,
+            qty: 1,
+            lineTotal: variant.price,
+          },
+        },
+      },
+    });
+    const refused = await call('DELETE', `/admin/products/${productId}`, editor);
+    expect([refused.status, refused.body.code]).toEqual([409, 'PRODUCT_ORDERED']);
+    await db!.order.delete({ where: { id: order.id } });
+    await db!.customer.delete({ where: { id: customer.id } });
   });
 
   it('adjusts stock with a reason, records a stocktake and keeps history', async () => {

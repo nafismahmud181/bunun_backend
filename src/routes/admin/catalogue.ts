@@ -367,6 +367,25 @@ export const adminCatalogueRoutes: FastifyPluginAsyncZod = async (app) => {
     },
   );
 
+  app.delete(
+    '/products/:id',
+    {
+      preHandler: write,
+      schema: {
+        tags,
+        headers,
+        summary: 'Delete a product no order includes (ordered products can only be archived)',
+        params: IdParams,
+        response: { 204: z.null(), ...errors },
+      },
+    },
+    async (req, reply) => {
+      const unusedImages = await catalogue.deleteProduct(app.db, req.params.id, ctx(req));
+      await Promise.all(unusedImages.map(discard));
+      return reply.code(204).send(null);
+    },
+  );
+
   app.put(
     '/products/:id/images/order',
     {

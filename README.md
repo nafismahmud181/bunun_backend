@@ -125,6 +125,9 @@ npm run admin:create -- --email you@example.com --reset                         
   - publishing needs at least one variant; archiving takes the product off the store
   - products can be duplicated (as a draft)
   - the slug is generated from the name, and a clash returns `409 SLUG_TAKEN`
+- **Option fields per category:** each category has an option label ("Size", "Dimensions"…) and up to 6 fields every option records, e.g. Dimensions (in) or Colour (`categories.option_label`, `categories.variant_fields`).
+  - The field `weight` is the shipping weight (`product_variants.weight_grams`, for couriers, never shown to shoppers).
+  - Other values are stored in `product_variants.attributes`; product pages return them as `variants[].details` (e.g. "Dimensions: 16 × 72 in") with `optionLabel`.
 - **Variants:**
   - SKUs are generated as `BN-P<product>-<n>` when left out
   - the old price must be higher than the price

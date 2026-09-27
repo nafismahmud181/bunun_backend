@@ -53,10 +53,15 @@ export const Variant = z
     compareAtPrice: Money.nullable(),
     stockStatus: StockStatus,
     stockLeft: z.number().int().optional().describe(`Only sent when stockStatus is "low" (≤ ${LOW_STOCK})`),
+    details: z
+      .array(z.object({ label: z.string(), value: z.string() }))
+      .optional()
+      .describe("The option's details, e.g. Dimensions: 16 × 72 in (product pages only)"),
   })
   .meta({ id: 'Variant' });
 
 export const ProductDetail = ProductSummary.extend({
+  optionLabel: z.string().describe('What one option is called, e.g. "Size" or "Dimensions"'),
   description: z.string().nullable(),
   images: z.array(Image),
   variants: z.array(Variant),

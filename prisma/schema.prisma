@@ -17,16 +17,21 @@ enum ProductStatus {
 }
 
 model Category {
-  id        Int       @id @default(autoincrement())
-  nameEn    String    @map("name_en")
-  nameBn    String?   @map("name_bn")
-  slug      String    @unique
-  imageUrl  String?   @map("image_url")
-  sort      Int       @default(0)
-  active    Boolean   @default(true)
-  products  Product[]
-  createdAt DateTime  @default(now()) @map("created_at")
-  updatedAt DateTime  @updatedAt @map("updated_at")
+  id            Int       @id @default(autoincrement())
+  nameEn        String    @map("name_en")
+  nameBn        String?   @map("name_bn")
+  slug          String    @unique
+  imageUrl      String?   @map("image_url")
+  sort          Int       @default(0)
+  active        Boolean   @default(true)
+  // What one option of a product in this category is called on the store ("Size", "Dimensions"…).
+  optionLabel   String    @default("Size") @map("option_label")
+  // The details each option records, in order: [{ key, label, unit? }]. Key "weight" is the
+  // shipping weight (product_variants.weight_grams); others are stored in product_variants.attributes.
+  variantFields Json      @default("[{\"key\":\"weight\",\"label\":\"Weight\",\"unit\":\"g\"}]") @map("variant_fields")
+  products      Product[]
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
 
   @@map("categories")
 }
@@ -95,6 +100,8 @@ model ProductVariant {
   compareAtPrice Int?                @map("compare_at_price")
   stock          Int                 @default(0)
   weightGrams    Int?                @map("weight_grams")
+  // Values for the category's option fields, e.g. { "dimensions": "16 × 72" }.
+  attributes     Json                @default("{}")
   sort           Int                 @default(0)
   movements      InventoryMovement[]
   cartItems      CartItem[]
