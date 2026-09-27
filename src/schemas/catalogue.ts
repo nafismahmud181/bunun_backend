@@ -34,6 +34,10 @@ export const ProductSummary = z
     compareAtPrice: Money.nullable().describe("First variant's old price, if on sale"),
     image: Image.nullable(),
     inStock: z.boolean(),
+    rating: z
+      .object({ average: z.number(), count: z.number().int() })
+      .nullable()
+      .describe('From approved reviews; null until the first one'),
     firstVariant: z
       .object({ sku: z.string(), label: z.string(), price: Money, stockStatus: StockStatus })
       .nullable()
@@ -77,6 +81,11 @@ export const ProductListQuery = z.object({
   maxPrice: z.coerce.number().int().positive().optional().describe('Products priced below this'),
   section: z.string().max(50).optional().describe('Homepage section key, e.g. bestsellers; keeps its order'),
   legacyId: z.string().max(20).optional().describe('Old storefront id, e.g. r1'),
+  slugs: z
+    .string()
+    .regex(/^[a-z0-9-]+(,[a-z0-9-]+){0,49}$/, 'Comma-separated slugs, at most 50')
+    .optional()
+    .describe('Only these products, e.g. for a wishlist (unknown or hidden ones are left out)'),
   sort: ProductSort.default('featured'),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(24),

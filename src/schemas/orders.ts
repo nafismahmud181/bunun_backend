@@ -9,6 +9,13 @@ export const BdPhone = z
   .transform((s) => s.replace(/[\s-]/g, '').replace(/^\+?88(?=01)/, ''))
   .pipe(z.string().regex(/^01[3-9]\d{8}$/, 'Enter a valid 11-digit mobile number, e.g. 01712345678'));
 
+export const CouponCode = z
+  .string()
+  .trim()
+  .min(1)
+  .max(30)
+  .regex(/^[A-Za-z0-9_-]+$/, 'Coupon codes use letters, numbers, - and _');
+
 export const IDEMPOTENCY_HEADER = 'idempotency-key';
 
 export const CheckoutHeaders = z.looseObject({
@@ -25,6 +32,7 @@ export const CheckoutBody = z.object({
   areaId: z.number().int().positive(),
   address: z.string().trim().min(5).max(300).describe('House, road, area'),
   notes: z.string().trim().max(500).optional(),
+  coupon: CouponCode.optional(),
   paymentMethod: z.literal('cod').describe('Only Cash on Delivery until Phase 4'),
 });
 
@@ -48,6 +56,8 @@ export const OrderReceipt = z
     phone: z.string(),
     items: z.array(OrderLine),
     subtotal: Money,
+    discount: Money,
+    couponCode: z.string().nullable(),
     deliveryFee: Money,
     total: Money,
     createdAt: z.string(),

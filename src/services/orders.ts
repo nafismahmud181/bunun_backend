@@ -26,6 +26,8 @@ export async function trackOrder(db: Db, orderNo: string, phone: string): Promis
       lineTotal: i.lineTotal,
     })),
     subtotal: o.subtotal,
+    discount: o.discount,
+    couponCode: o.couponCode,
     deliveryFee: o.deliveryFee,
     total: o.total,
     createdAt: o.createdAt.toISOString(),

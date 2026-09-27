@@ -49,6 +49,10 @@ model Product {
   // Lowest variant price, stored so listings can filter and sort by price in SQL.
   // Keep in sync with refreshPriceFrom() whenever variants change.
   priceFrom      Int                   @default(0) @map("price_from")
+  // Kept up to date from approved reviews (refreshRating), so lists can show stars without a join.
+  ratingAvg      Float?                @map("rating_avg")
+  ratingCount    Int                   @default(0) @map("rating_count")
+  reviews        Review[]
   variants       ProductVariant[]
   images         ProductImage[]
   sectionItems   HomepageSectionItem[]
@@ -288,6 +292,9 @@ model Order {
   // "web", or where staff took a manual order: "facebook", "whatsapp", "phone", "other".
   source         String               @default("web")
   // The admin who entered a manual order.
+  couponCode     String?              @map("coupon_code")
+  redemption     CouponRedemption?
+  reviews        Review[]
   createdById    Int?                 @map("created_by_id")
   createdBy      AdminUser?           @relation("OrdersEntered", fields: [createdById], references: [id], onDelete: SetNull)
   idempotencyKey String               @unique @map("idempotency_key")
@@ -471,4 +478,125 @@ model OrderNote {
 
   @@index([orderId, createdAt])
   @@map("order_notes")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Coupons
+
+enum CouponType {
+  percent
+  fixed
+  free_delivery
+}
+
+model Coupon {
+  id             Int                @id @default(autoincrement())
+  // Stored upper-case; shoppers can type it in any case.
+  code           String             @unique
+  description    String?
+  type           CouponType
+  // Percent (1-100) for "percent", taka for "fixed", 0 for "free_delivery".
+  value          Int                @default(0)
+  // Cap on a percentage discount, in taka.
+  maxDiscount    Int?               @map("max_discount")
+  minSubtotal    Int                @default(0) @map("min_subtotal")
+  startsAt       DateTime?          @map("starts_at")
+  endsAt         DateTime?          @map("ends_at")
+  // Total uses across everyone (null = unlimited) and uses per phone number.
+  usageLimit     Int?               @map("usage_limit")
+  perPhoneLimit  Int                @default(1) @map("per_phone_limit")
+  firstOrderOnly Boolean            @default(false) @map("first_order_only")
+  active         Boolean            @default(true)
+  // Uses by orders that weren't cancelled; checked and incremented atomically at checkout.
+  usedCount      Int                @default(0) @map("used_count")
+  redemptions    CouponRedemption[]
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+
+  @@map("coupons")
+}
+
+// One row per order that used a coupon. Deleted (and the use given back) when the order is cancelled.
+model CouponRedemption {
+  id        Int      @id @default(autoincrement())
+  couponId  Int      @map("coupon_id")
+  coupon    Coupon   @relation(fields: [couponId], references: [id], onDelete: Cascade)
+  orderId   Int      @unique @map("order_id")
+  order     Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  phone     String
+  // Taka saved: the item discount, or the delivery fee waived.
+  amount    Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([couponId, phone])
+  @@map("coupon_redemptions")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Reviews: written by buyers of delivered orders (order number + phone), shown once approved.
+
+enum ReviewStatus {
+  pending
+  approved
+  rejected
+}
+
+model Review {
+  id            Int           @id @default(autoincrement())
+  productId     Int           @map("product_id")
+  product       Product       @relation(fields: [productId], references: [id], onDelete: Cascade)
+  orderId       Int?          @map("order_id")
+  order         Order?        @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  // Shown on the site, e.g. "Rahima B."; the district comes from the order.
+  name          String
+  city          String?
+  rating        Int
+  body          String
+  status        ReviewStatus  @default(pending)
+  moderatedById Int?          @map("moderated_by_id")
+  moderatedAt   DateTime?     @map("moderated_at")
+  images        ReviewImage[]
+  createdAt     DateTime      @default(now()) @map("created_at")
+
+  @@unique([orderId, productId])
+  @@index([productId, status, createdAt])
+  @@index([status, createdAt])
+  @@map("reviews")
+}
+
+model ReviewImage {
+  id       Int    @id @default(autoincrement())
+  reviewId Int    @map("review_id")
+  review   Review @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  url      String
+  sort     Int    @default(0)
+
+  @@index([reviewId])
+  @@map("review_images")
+}
+
+// ---------------------------------------------------------------------------------------------
+// CMS: editable storefront content. A missing row means "use the default" (src/lib/content.ts),
+// so the site looks the same until staff change something.
+
+// One JSON value per block: hero, promos, homepage_sections, faq.
+model ContentBlock {
+  key         String   @id
+  value       Json
+  updatedById Int?     @map("updated_by_id")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("content_blocks")
+}
+
+// Legal and information pages (about, privacy, terms, refund-policy). The body is a small
+// Markdown subset (## headings, paragraphs, - lists, **bold**, [links](/path)).
+model Page {
+  slug        String   @id
+  title       String
+  body        String
+  updatedById Int?     @map("updated_by_id")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("pages")
 }

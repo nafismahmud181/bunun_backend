@@ -5,7 +5,8 @@ import type { Db } from '../lib/prisma.js';
 import { getSettings } from '../lib/settings.js';
 import type { CheckoutBody, OrderReceipt } from '../schemas/orders.js';
 import { findCart } from './cart.js';
-import { deliveryFee, resolveArea } from './delivery.js';
+import { applyCoupon, lockCoupon, recordRedemption } from './coupons.js';
+import { resolveArea } from './delivery.js';
 import { orderPlacedSms } from './sms/templates.js';
 
 export interface CheckoutContext {
@@ -34,6 +35,8 @@ export function toReceipt(o: Prisma.OrderGetPayload<{ include: typeof receiptInc
       lineTotal: i.lineTotal,
     })),
     subtotal: o.subtotal,
+    discount: o.discount,
+    couponCode: o.couponCode,
     deliveryFee: o.deliveryFee,
     total: o.total,
     createdAt: o.createdAt.toISOString(),
@@ -157,7 +160,9 @@ export async function placeOrder(
           );
 
         const subtotal = lines.reduce((a, l) => a + l.variant.price * l.qty, 0);
-        const fee = deliveryFee(subtotal, zone.fee, settings.free_delivery_threshold);
+        // The coupon row stays locked until this transaction ends, so its last use can't be taken twice.
+        const coupon = input.coupon ? await lockCoupon(tx, input.coupon, subtotal, input.phone) : null;
+        const amounts = applyCoupon(coupon, subtotal, zone.fee, settings.free_delivery_threshold);
         const customer = await tx.customer.upsert({
           where: { phone: input.phone },
           create: { phone: input.phone, name: input.name },
@@ -177,8 +182,10 @@ export async function placeOrder(
             addressLine: input.address,
             zoneKey: zone.key,
             subtotal,
-            deliveryFee: fee,
-            total: subtotal + fee,
+            discount: amounts.discount,
+            couponCode: coupon?.code ?? null,
+            deliveryFee: amounts.deliveryFee,
+            total: amounts.total,
             paymentMethod: 'cod',
             notes: input.notes || null,
             ip: ctx.ip,
@@ -195,13 +202,20 @@ export async function placeOrder(
                 lineTotal: l.variant.price * l.qty,
               })),
             },
-            history: { create: { toStatus: 'pending', actor: 'customer', note: 'Placed online (Cash on Delivery)' } },
+            history: {
+              create: {
+                toStatus: 'pending',
+                actor: 'customer',
+                note: `Placed online (Cash on Delivery)${coupon ? `, coupon ${coupon.code}` : ''}`,
+              },
+            },
           },
           include: receiptInclude,
         });
         await tx.inventoryMovement.createMany({
           data: lines.map((l) => ({ variantId: l.variantId, change: -l.qty, reason: 'order', orderId: order.id })),
         });
+        if (coupon) await recordRedemption(tx, coupon, order, amounts.saved);
         await tx.smsMessage.create({
           data: {
             to: input.phone,

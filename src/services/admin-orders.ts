@@ -6,6 +6,7 @@ import type { Db } from '../lib/prisma.js';
 import { getSettings } from '../lib/settings.js';
 import type { AdminOrderDetail, AdminOrderList, OrderEditBody, OrderListQuery } from '../schemas/admin-orders.js';
 import { trackUrl } from './checkout.js';
+import { releaseRedemption } from './coupons.js';
 import { deliveryFee, resolveArea } from './delivery.js';
 import { orderCancelledSms, orderConfirmedSms, orderShippedSms } from './sms/templates.js';
 
@@ -223,6 +224,7 @@ export async function getOrderDetail(db: Db, orderNo: string): Promise<z.infer<t
     })),
     subtotal: o.subtotal,
     discount: o.discount,
+    couponCode: o.couponCode,
     deliveryFee: o.deliveryFee,
     total: o.total,
     history: o.history.map((h) => ({
@@ -284,6 +286,7 @@ export async function changeStatus(
           ? orderCancelledSms({ orderNo: order.orderNo, hotline: settings.hotline })
           : null;
   const restock = input.to === 'cancelled' || (input.to === 'returned' && input.restock);
+  let couponReleased = false;
 
   await db.$transaction(async (tx) => {
     // Only succeeds if nobody else changed the status in the meantime.
@@ -322,6 +325,7 @@ export async function changeStatus(
         });
       }
     }
+    if (input.to === 'cancelled') couponReleased = await releaseRedemption(tx, order.id);
     if (sms)
       await tx.smsMessage.create({
         data: { to: order.phone, body: sms, template: `order_${input.to}`, orderId: order.id },
@@ -331,7 +335,13 @@ export async function changeStatus(
       action: 'order.status',
       entityType: 'order',
       entityId: order.orderNo,
-      data: { from: order.status, to: input.to, restocked: restock, ...(input.note && { note: input.note }) },
+      data: {
+        from: order.status,
+        to: input.to,
+        restocked: restock,
+        ...(couponReleased && { couponReleased: order.couponCode }),
+        ...(input.note && { note: input.note }),
+      },
       ip: ctx.ip,
     });
   });
@@ -370,7 +380,12 @@ export async function editOrder(db: Db, orderNo: string, input: z.infer<typeof O
   if (input.areaId !== undefined && input.areaId !== order.areaId) {
     const { area, district, division, zone } = await resolveArea(db, input.areaId);
     const settings = await getSettings(db);
-    const fee = deliveryFee(order.subtotal, zone.fee, settings.free_delivery_threshold);
+    // A free-delivery coupon stays free wherever the parcel goes.
+    const coupon = order.couponCode ? await db.coupon.findUnique({ where: { code: order.couponCode } }) : null;
+    const fee =
+      coupon?.type === 'free_delivery'
+        ? 0
+        : deliveryFee(order.subtotal - order.discount, zone.fee, settings.free_delivery_threshold);
     Object.assign(data, {
       areaId: area.id,
       areaName: area.nameEn,

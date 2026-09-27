@@ -10,6 +10,8 @@ export const PERMISSIONS = [
   'products:read',
   'products:write',
   'inventory:write',
+  'coupons:write',
+  'content:write',
   'settings:write',
   'staff:manage',
   'audit:read',
@@ -27,10 +29,12 @@ const ROLE_PERMISSIONS: Record<AdminRole, readonly Permission[]> = {
     'products:read',
     'products:write',
     'inventory:write',
+    'coupons:write',
+    'content:write',
     'audit:read',
   ],
   order_handler: ['orders:read', 'orders:write', 'customers:read', 'customers:write', 'products:read'],
-  content_editor: ['products:read', 'products:write'],
+  content_editor: ['products:read', 'products:write', 'content:write'],
 };
 
 export const permissionsFor = (role: AdminRole): Permission[] => [...ROLE_PERMISSIONS[role]];

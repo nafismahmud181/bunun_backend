@@ -249,7 +249,7 @@ describe.skipIf(!url)('admin API (database)', () => {
       ).toBe(403);
       expect((await call('GET', '/admin/orders', { token: handler })).status).toBe(200);
       const me = await call('GET', '/admin/auth/me', { token: contentEditor });
-      expect(me.body.permissions).toEqual(['products:read', 'products:write']);
+      expect(me.body.permissions).toEqual(['products:read', 'products:write', 'content:write']);
     });
   });
 

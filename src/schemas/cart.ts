@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { Image, StockStatus } from './catalogue.js';
+import { BdPhone, CouponCode } from './orders.js';
 
 const Money = z.number().int().describe('Whole taka');
 const Sku = z.string().regex(/^[A-Za-z0-9-]{1,64}$/);
@@ -39,13 +40,28 @@ export const AddItemBody = z.object({ sku: Sku, qty: z.number().int().min(1).max
 export const SetQtyBody = z.object({ qty: z.number().int().min(0).max(20).describe('0 removes the item') });
 export const SkuParams = z.object({ sku: Sku });
 
-export const QuoteQuery = z.object({ areaId: z.coerce.number().int().positive() });
+export const QuoteQuery = z.object({
+  areaId: z.coerce.number().int().positive().optional().describe('Without it, the quote has no delivery fee yet'),
+  coupon: CouponCode.optional(),
+  phone: BdPhone.optional().describe('With a coupon: also checks its per-phone and first-order rules'),
+});
 export const Quote = z
   .object({
     subtotal: Money,
-    deliveryFee: Money,
-    total: Money,
+    discount: Money,
+    deliveryFee: Money.nullable().describe('Null until an area is given'),
+    total: Money.describe('Includes the delivery fee once an area is given'),
     freeDelivery: z.boolean(),
-    zone: z.object({ key: z.string(), name: z.string(), estimate: z.string() }),
+    coupon: z
+      .object({
+        code: z.string(),
+        summary: z.string().describe('e.g. "20% off (up to ৳500)"'),
+        description: z.string().nullable(),
+        saved: Money,
+      })
+      .nullable()
+      .describe('The coupon applied, if the one sent is valid'),
+    couponError: z.string().optional().describe("Why the coupon sent can't be used (the quote is without it)"),
+    zone: z.object({ key: z.string(), name: z.string(), estimate: z.string() }).nullable(),
   })
   .meta({ id: 'Quote' });

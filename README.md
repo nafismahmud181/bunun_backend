@@ -72,17 +72,19 @@ Full details are at `/docs`. Errors return `{ statusCode, error, code, message, 
 | `GET /api/v1/variants?skus=` | Current price and stock for up to 50 SKUs                                                                                           |
 | `GET /api/v1/settings`       | Free-delivery threshold, hotline, delivery zones and fees, store details (name, address, email, trade licence) for invoices         |
 | `GET /api/v1/locations`      | Divisions → districts → areas (upazilas and Dhaka city thanas) with each area's delivery zone                                       |
+| `GET /api/v1/content`        | Homepage content from the CMS: sale banner, promo tiles, section order, FAQ (placeholders filled in)                                |
+| `GET /api/v1/pages/:slug`    | A store page (about, privacy, terms, refund-policy) as Markdown                                                                     |
 
 **Cart and orders:** the guest cart is identified by a random token in the `X-Cart-Token` header. Only its SHA-256 hash is stored.
 
-| Route                                                               | What it does                                                                                                                                                             |
-| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /api/v1/cart`                                                  | The cart with current prices and stock                                                                                                                                   |
-| `POST /api/v1/cart/items`                                           | Add units; without a token it creates the cart and returns `token` once                                                                                                  |
-| `PUT` / `DELETE /api/v1/cart/items/:sku`                            | Set a quantity (0 removes) / remove; quantities are capped at stock and 20                                                                                               |
-| `GET /api/v1/cart/quote?areaId=`                                    | Delivery fee and total for an area (free from the threshold)                                                                                                             |
-| `POST /api/v1/checkout` (headers `X-Cart-Token`, `Idempotency-Key`) | Places a Cash on Delivery order in one transaction: server prices, atomic stock decrement, sequence order number (`BN-2026-000123`), SMS queued. 201 new; 200 repeat key |
-| `GET /api/v1/orders/track?orderNo=&phone=`                          | Status timeline for the public track page. The phone must match; no name or street address is returned                                                                   |
+| Route                                                               | What it does                                                                                                                                                                                |
+| ------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/cart`                                                  | The cart with current prices and stock                                                                                                                                                      |
+| `POST /api/v1/cart/items`                                           | Add units; without a token it creates the cart and returns `token` once                                                                                                                     |
+| `PUT` / `DELETE /api/v1/cart/items/:sku`                            | Set a quantity (0 removes) / remove; quantities are capped at stock and 20                                                                                                                  |
+| `GET /api/v1/cart/quote?areaId=&coupon=&phone=`                     | Discount, delivery fee and total. The area is optional (no fee until it is known); an unusable coupon comes back as `couponError` with the quote priced without it                          |
+| `POST /api/v1/checkout` (headers `X-Cart-Token`, `Idempotency-Key`) | Places a Cash on Delivery order in one transaction: server prices, atomic stock decrement, sequence order number (`BN-2026-000123`), optional `coupon`, SMS queued. 201 new; 200 repeat key |
+| `GET /api/v1/orders/track?orderNo=&phone=`                          | Status timeline for the public track page. The phone must match; no name or street address is returned                                                                                      |
 
 **Fraud checks at checkout:** blocked phones and IPs (`blocked_contacts` table), at most `order_limit_per_phone_24h` orders per phone and `order_limit_per_ip_1h` per IP (both in `settings`), plus per-IP rate limits (checkout 10/min, tracking 20 per 10 min, everything else 300/min).
 
@@ -139,6 +141,48 @@ npm run admin:create -- --email you@example.com --reset                         
 - **CDN caching:** files are served with a one-year cache (every file name is unique), so a deleted photo can still be reachable through Supabase's CDN for a while after it is removed from storage.
 
 Tests use an in-memory store (`STORAGE_DRIVER=memory`), so they need no Supabase keys.
+
+## Content (CMS)
+
+Staff with `content:write` (owners, managers, content editors) edit storefront content under `/admin/content` and `/admin/pages`. Every save is audited and refreshes the storefront.
+
+- **Blocks** (`content_blocks`, one JSON value each): the sale banner and countdown (`hero`), up to 4 promo tiles (`promos`), the order and visibility of homepage sections (`homepage_sections`), and the FAQ (`faq`).
+  - A block nobody has saved uses the default in `src/lib/content.ts`, which matches the original storefront.
+  - "Use the original" (`DELETE /admin/content/:key`) goes back to that default.
+- **Links** must be store paths (`/shop?cat=…`) or `https://` addresses; `javascript:` and `//` links are refused.
+- **FAQ placeholders** `{hotline}`, `{free_delivery}` and `{delivery_fees}` are filled in from Settings, so answers stay right when fees change.
+- **Promo images:** uploaded through `POST /admin/content/images` (same checks and WebP sizes as product photos, stored under `content/`). An uploaded image no tile uses any more is deleted when the tiles are saved or reset.
+- **Best sellers and New arrivals:** `PUT /admin/content/section-products/:key` sets their products (up to 12) in order.
+- **Pages** (`pages`): about, privacy, terms and refund-policy, written in a small Markdown subset (`##` headings, paragraphs, `-` lists, `**bold**`, `[links](/path)`). Until saved, each page shows its section headings only.
+
+## Coupons, reviews and the wishlist
+
+**Coupons** (`coupons`, `coupon_redemptions`):
+
+- **Types:** percentage off (with an optional cap), a fixed amount off, or free delivery.
+- **Rules:** minimum item total, start and end dates, total uses, uses per phone number, and "first order only" (phone numbers with no order that wasn't cancelled).
+- **At checkout:** the coupon row is locked (`SELECT … FOR UPDATE`) inside the order transaction, so its last use can't be taken twice, and every rule is checked again against the real subtotal.
+- **Free delivery** is judged on the item total after the discount.
+- **Cancelling an order** gives its coupon use back.
+- **Admin** (`/admin/coupons`, `coupons:write`: owners and managers):
+  - create, edit, disable, and see which orders used a coupon
+  - Once a coupon is used, its discount is fixed and it can't be deleted (only disabled).
+
+**Reviews** (`reviews`, `review_images`):
+
+- **Who can review:** buyers of a **delivered** order, using the order number and phone number. There are no customer accounts. One review per product per order.
+  - `POST /reviews/lookup` lists what they can review.
+  - `POST /reviews` takes multipart form data: `orderNo`, `phone`, `slug`, `rating`, `name`, `body`, and up to 3 `photo` files.
+  - Photos go through the same checks and WebP sizes as product images, stored under `reviews/`.
+  - Both routes are rate limited per IP.
+- **Approval:** new reviews are `pending`. Staff with `products:write` approve, reject or delete them (`/admin/reviews`); deleting also removes the photos.
+- **Ratings:** approving or rejecting updates `products.rating_avg` / `rating_count` and refreshes the storefront.
+- **Public:**
+  - `GET /products/:slug/reviews`: approved reviews and the star breakdown
+  - `GET /reviews/featured`: recent 4–5 star reviews and the store average, for the homepage
+  - Product lists and pages include `rating`.
+
+**Wishlist:** kept in the shopper's browser. `GET /products?slugs=a,b,…` (up to 50) returns the saved products that are still for sale.
 
 ## Store management admin
 

@@ -38,6 +38,10 @@ function toSummary(p: SummaryRow): z.infer<typeof ProductSummary> {
     compareAtPrice: first?.compareAtPrice ?? null,
     image: p.images[0] ?? null,
     inStock: p.variants.some((v) => v.stock > 0),
+    rating:
+      p.ratingCount > 0 && p.ratingAvg !== null
+        ? { average: Math.round(p.ratingAvg * 10) / 10, count: p.ratingCount }
+        : null,
     firstVariant: first
       ? { sku: first.sku, label: first.label, price: first.price, stockStatus: stockInfo(first.stock).stockStatus }
       : null,
@@ -72,6 +76,7 @@ export async function listProducts(db: Db, q: ProductListQuery): Promise<z.infer
     ...(q.category && { category: { active: true, slug: q.category } }),
     ...(q.maxPrice && { priceFrom: { lt: q.maxPrice } }),
     ...(q.legacyId && { legacyId: q.legacyId }),
+    ...(q.slugs && { slug: { in: q.slugs.split(',') } }),
     ...(q.q && {
       OR: [
         { nameEn: { contains: q.q, mode: 'insensitive' } },

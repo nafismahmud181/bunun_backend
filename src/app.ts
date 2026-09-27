@@ -21,11 +21,15 @@ import { createImageStore, type ImageStore } from './services/storage.js';
 import { adminAuthRoutes } from './routes/admin/auth.js';
 import { adminCatalogueRoutes } from './routes/admin/catalogue.js';
 import { adminManagementRoutes } from './routes/admin/management.js';
+import { adminMarketingRoutes } from './routes/admin/marketing.js';
+import { adminContentRoutes } from './routes/admin/content.js';
 import { adminOrderRoutes } from './routes/admin/orders.js';
 import { cartRoutes } from './routes/cart.js';
 import { catalogueRoutes } from './routes/catalogue.js';
 import { healthRoutes } from './routes/health.js';
 import { orderRoutes } from './routes/orders.js';
+import { reviewRoutes } from './routes/reviews.js';
+import { contentRoutes } from './routes/content.js';
 import { storeRoutes } from './routes/store.js';
 
 declare module 'fastify' {
@@ -109,11 +113,15 @@ export async function buildApp(config: Config, db: Db, images: ImageStore | null
   await app.register(storeRoutes, { prefix: '/api/v1' });
   await app.register(cartRoutes, { prefix: '/api/v1' });
   await app.register(orderRoutes, { prefix: '/api/v1' });
+  await app.register(reviewRoutes, { prefix: '/api/v1' });
+  await app.register(contentRoutes, { prefix: '/api/v1' });
   // Staff API. Every route requires a signed-in admin with the right permission (see plugins/admin-auth.ts).
   await app.register(adminAuthRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminOrderRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminCatalogueRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminManagementRoutes, { prefix: '/api/v1/admin' });
+  await app.register(adminMarketingRoutes, { prefix: '/api/v1/admin' });
+  await app.register(adminContentRoutes, { prefix: '/api/v1/admin' });
 
   return app;
 }

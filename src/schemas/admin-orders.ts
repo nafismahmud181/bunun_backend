@@ -88,6 +88,7 @@ export const AdminOrderDetail = z
     ),
     subtotal: Money,
     discount: Money,
+    couponCode: z.string().nullable(),
     deliveryFee: Money,
     total: Money,
     history: z.array(
