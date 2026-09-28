@@ -228,6 +228,21 @@ describe.skipIf(!url)('part 5b: CMS (database)', () => {
     expect(store).toEqual(slugs);
   });
 
+  it('fills New arrivals and Best sellers automatically when nothing is picked', async () => {
+    await call('PUT', '/admin/content/section-products/new-arrivals', editor, { productIds: [] });
+    await call('PUT', '/admin/content/section-products/bestsellers', editor, { productIds: [] });
+    const newest = (await call('GET', '/products?sort=newest&limit=8')).body.items.map((p: { slug: string }) => p.slug);
+    const arrivals = (await call('GET', '/products?section=new-arrivals')).body;
+    expect(arrivals.items.map((p: { slug: string }) => p.slug)).toEqual(newest);
+    // Few or no sales in the test data: topped up in featured order, not a copy of New arrivals.
+    const featured = (await call('GET', '/products?sort=featured&limit=100')).body.items.map(
+      (p: { slug: string }) => p.slug,
+    );
+    const best = (await call('GET', '/products?section=bestsellers')).body.items.map((p: { slug: string }) => p.slug);
+    expect(best).toHaveLength(Math.min(8, featured.length));
+    expect(best.every((slug: string) => featured.includes(slug))).toBe(true);
+  });
+
   it('saves pages and reports which ones are still headings only', async () => {
     const before = (await call('GET', '/admin/pages', editor)).body;
     expect(before.every((p: { filledIn: boolean }) => !p.filledIn)).toBe(true);
@@ -253,6 +268,8 @@ describe.skipIf(!url)('part 5b: CMS (database)', () => {
       'content.update:promos',
       'content.update:promos',
       'content.reset:promos',
+      'content.section_products:bestsellers',
+      'content.section_products:new-arrivals',
       'content.section_products:bestsellers',
       'page.update:about',
     ]);

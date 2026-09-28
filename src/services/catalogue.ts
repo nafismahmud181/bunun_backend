@@ -72,6 +72,53 @@ export async function listCategories(db: Db): Promise<z.infer<typeof Category>[]
   return rows.map((c) => ({ slug: c.slug, name: c.nameEn, imageUrl: c.imageUrl, productCount: c._count.products }));
 }
 
+/** Sections that fill themselves when staff haven't picked any products for them. */
+type AutoSection = 'bestsellers' | 'new-arrivals';
+const AUTO_SECTIONS = new Set<string>(['bestsellers', 'new-arrivals']);
+const AUTO_SIZE = 8;
+
+/**
+ * New arrivals: the newest products. Best sellers: the products with the most units sold in the
+ * last 90 days (cancelled, returned and refunded orders don't count), topped up in the store's
+ * featured order while there aren't enough sales yet, so it doesn't repeat New arrivals.
+ */
+async function autoSection(db: Db, section: AutoSection, where: Prisma.ProductWhereInput, take: number) {
+  const pick = (order: Prisma.ProductOrderByWithRelationInput[], exclude: number[], n: number) =>
+    db.product.findMany({
+      where: { ...where, ...(exclude.length && { id: { notIn: exclude } }) },
+      orderBy: order,
+      take: n,
+      include: summaryInclude,
+    });
+  if (section === 'new-arrivals') return pick([{ createdAt: 'desc' }, { id: 'desc' }], [], take);
+
+  const sold = await db.$queryRaw<{ product_id: number }[]>`
+    SELECT v."product_id"
+    FROM "order_items" i
+    JOIN "product_variants" v ON v."id" = i."variant_id"
+    JOIN "orders" o ON o."id" = i."order_id"
+    WHERE o."status" NOT IN ('cancelled', 'returned', 'refunded')
+      AND o."created_at" > now() - interval '90 days'
+    GROUP BY v."product_id"
+    ORDER BY sum(i."qty") DESC, v."product_id"
+    LIMIT 50`;
+  const ids = sold.map((r) => r.product_id);
+  const rows = ids.length
+    ? await db.product.findMany({ where: { ...where, id: { in: ids } }, include: summaryInclude })
+    : [];
+  const top = ids.flatMap((id) => rows.filter((r) => r.id === id)).slice(0, take);
+  return top.length < take
+    ? [
+        ...top,
+        ...(await pick(
+          orderBy.featured,
+          top.map((p) => p.id),
+          take - top.length,
+        )),
+      ]
+    : top;
+}
+
 export async function listProducts(db: Db, q: ProductListQuery): Promise<z.infer<typeof ProductList>> {
   const where: Prisma.ProductWhereInput = {
     ...visible,
@@ -102,7 +149,11 @@ export async function listProducts(db: Db, q: ProductListQuery): Promise<z.infer
       }),
       db.homepageSectionItem.count({ where: itemWhere }),
     ]);
-    return { items: items.map((i) => toSummary(i.product)), total, page: q.page, limit: q.limit };
+    if (total > 0 || !AUTO_SECTIONS.has(q.section) || q.page > 1)
+      return { items: items.map((i) => toSummary(i.product)), total, page: q.page, limit: q.limit };
+    // Nothing picked (or nothing picked is for sale): fill the section automatically.
+    const auto = await autoSection(db, q.section as AutoSection, where, Math.min(q.limit, AUTO_SIZE));
+    return { items: auto.map(toSummary), total: auto.length, page: 1, limit: q.limit };
   }
 
   const [rows, total] = await Promise.all([
