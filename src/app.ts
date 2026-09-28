@@ -45,6 +45,9 @@ export async function buildApp(config: Config, db: Db, images: ImageStore | null
   const app = Fastify({
     logger: { level: config.LOG_LEVEL },
     trustProxy: config.TRUST_PROXY,
+    // Product slugs can be up to 120 characters (admin) and are read as up to 200 (public routes);
+    // Fastify's default of 100 answered longer ones with 414 URI Too Long.
+    routerOptions: { maxParamLength: 200 },
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);
