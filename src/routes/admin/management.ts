@@ -40,6 +40,8 @@ import * as staff from '../../services/admin-staff.js';
 import { dashboard } from '../../services/dashboard.js';
 import { reportRange, salesReport } from '../../services/reports.js';
 import { ReportQuery, SalesReport } from '../../schemas/reports.js';
+import { ProfitPlan, ProfitPlanReply } from '../../schemas/profit-plan.js';
+import { getProfitPlan, saveProfitPlan } from '../../services/profit-plan.js';
 import { createManualOrder } from '../../services/manual-orders.js';
 import { notifyStorefront } from '../../services/revalidate.js';
 
@@ -441,6 +443,37 @@ export const adminManagementRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req) => salesReport(app.db, reportRange(req.query)),
+  );
+
+  // ---------- Profit planner (owner only: costs and margins) ----------
+
+  app.get(
+    '/profit-plan',
+    {
+      preHandler: settingsWrite,
+      schema: {
+        tags,
+        headers,
+        summary: 'Profit planner inputs, the typical defaults and the last 90 days of real figures',
+        response: { 200: ProfitPlanReply, ...errors },
+      },
+    },
+    async () => getProfitPlan(app.db),
+  );
+
+  app.put(
+    '/profit-plan',
+    {
+      preHandler: settingsWrite,
+      schema: {
+        tags,
+        headers,
+        summary: 'Save the profit planner inputs',
+        body: ProfitPlan,
+        response: { 200: ProfitPlanReply, ...errors },
+      },
+    },
+    async (req) => saveProfitPlan(app.db, req.body, ctx(req)),
   );
 
   app.get(
