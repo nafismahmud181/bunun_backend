@@ -38,6 +38,8 @@ import { getCustomer, listCustomers, setCustomerBlocked, updateCustomer } from '
 import * as settings from '../../services/admin-settings.js';
 import * as staff from '../../services/admin-staff.js';
 import { dashboard } from '../../services/dashboard.js';
+import { reportRange, salesReport } from '../../services/reports.js';
+import { ReportQuery, SalesReport } from '../../schemas/reports.js';
 import { createManualOrder } from '../../services/manual-orders.js';
 import { notifyStorefront } from '../../services/revalidate.js';
 
@@ -426,6 +428,21 @@ export const adminManagementRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async () => dashboard(app.db),
   );
+  app.get(
+    '/reports',
+    {
+      preHandler: requireAdmin('audit:read'),
+      schema: {
+        tags,
+        headers,
+        summary: 'Sales by day, product, category and channel; payments; courier performance',
+        querystring: ReportQuery,
+        response: { 200: SalesReport, ...errors },
+      },
+    },
+    async (req) => salesReport(app.db, reportRange(req.query)),
+  );
+
   app.get(
     '/audit',
     {

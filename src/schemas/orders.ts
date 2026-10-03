@@ -72,5 +72,14 @@ export const TrackedOrder = OrderReceipt.omit({ phone: true })
     district: z.string(),
     area: z.string(),
     history: z.array(z.object({ status: OrderStatus, at: z.string() })),
+    courier: z
+      .object({
+        name: z.string(),
+        consignmentId: z.string(),
+        status: z.string().nullable(),
+        trackingUrl: z.string().nullable(),
+      })
+      .nullable()
+      .describe('The parcel with the courier, once booked'),
   })
   .meta({ id: 'TrackedOrder' });

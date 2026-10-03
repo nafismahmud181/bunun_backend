@@ -30,6 +30,9 @@ import { healthRoutes } from './routes/health.js';
 import { orderRoutes } from './routes/orders.js';
 import { reviewRoutes } from './routes/reviews.js';
 import { contentRoutes } from './routes/content.js';
+import { webhookRoutes } from './routes/webhooks.js';
+import { adminShipmentRoutes } from './routes/admin/shipments.js';
+import { type CourierDriver, createCourier } from './services/courier/index.js';
 import { storeRoutes } from './routes/store.js';
 
 declare module 'fastify' {
@@ -38,10 +41,17 @@ declare module 'fastify' {
     config: Config;
     /** Where uploaded images go; null when storage isn't configured (uploads are refused). */
     images: ImageStore | null;
+    /** The courier parcels are booked with; null when it isn't configured (booking is refused). */
+    courier: CourierDriver | null;
   }
 }
 
-export async function buildApp(config: Config, db: Db, images: ImageStore | null = createImageStore(config)) {
+export async function buildApp(
+  config: Config,
+  db: Db,
+  images: ImageStore | null = createImageStore(config),
+  courier: CourierDriver | null = createCourier(config, db),
+) {
   const app = Fastify({
     logger: { level: config.LOG_LEVEL },
     trustProxy: config.TRUST_PROXY,
@@ -56,6 +66,7 @@ export async function buildApp(config: Config, db: Db, images: ImageStore | null
   app.decorate('db', db);
   app.decorate('config', config);
   app.decorate('images', images);
+  app.decorate('courier', courier);
   app.decorateRequest('admin', null);
   app.addHook('onClose', async () => {
     await db.$disconnect();
@@ -118,6 +129,7 @@ export async function buildApp(config: Config, db: Db, images: ImageStore | null
   await app.register(orderRoutes, { prefix: '/api/v1' });
   await app.register(reviewRoutes, { prefix: '/api/v1' });
   await app.register(contentRoutes, { prefix: '/api/v1' });
+  await app.register(webhookRoutes, { prefix: '/api/v1' });
   // Staff API. Every route requires a signed-in admin with the right permission (see plugins/admin-auth.ts).
   await app.register(adminAuthRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminOrderRoutes, { prefix: '/api/v1/admin' });
@@ -125,6 +137,7 @@ export async function buildApp(config: Config, db: Db, images: ImageStore | null
   await app.register(adminManagementRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminMarketingRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminContentRoutes, { prefix: '/api/v1/admin' });
+  await app.register(adminShipmentRoutes, { prefix: '/api/v1/admin' });
 
   return app;
 }

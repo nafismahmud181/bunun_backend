@@ -52,6 +52,20 @@ const Env = z
     STORAGE_BUCKET: z.string().default('product-images'),
     // Shared with the storefront, which then refreshes its catalogue cache when products change.
     REVALIDATE_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16).optional()),
+    // Pathao courier (Phase 6). Booking is switched off until the client, user and password are set.
+    // The sandbox (default) accepts Pathao's published test account; live is https://api-hermes.pathao.com.
+    COURIER_DRIVER: z.enum(['pathao', 'fake']).default('pathao'),
+    PATHAO_BASE_URL: z.string().url().default('https://courier-api-sandbox.pathao.com'),
+    PATHAO_CLIENT_ID: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+    PATHAO_CLIENT_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+    PATHAO_USERNAME: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+    PATHAO_PASSWORD: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+    // Which Pathao store parcels are picked up from; the account's default store when empty.
+    PATHAO_STORE_ID: z.preprocess((v) => (v === '' ? undefined : v), z.coerce.number().int().positive().optional()),
+    // The secret entered in Pathao's webhook settings. Pathao expects it echoed back in a header.
+    PATHAO_WEBHOOK_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
+    // Check open parcels with Pathao this often (minutes); the webhook usually updates them sooner.
+    COURIER_SYNC_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
   })
   .refine((c) => c.NODE_ENV !== 'production' || c.ADMIN_ENCRYPTION_KEY, {
     message: 'ADMIN_ENCRYPTION_KEY is required in production',

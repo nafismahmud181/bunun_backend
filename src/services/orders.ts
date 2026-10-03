@@ -1,4 +1,5 @@
 import type { z } from 'zod';
+import { pathaoTrackingUrl } from './courier/pathao.js';
 import type { Db } from '../lib/prisma.js';
 import type { TrackedOrder } from '../schemas/orders.js';
 
@@ -10,9 +11,18 @@ import type { TrackedOrder } from '../schemas/orders.js';
 export async function trackOrder(db: Db, orderNo: string, phone: string): Promise<z.infer<typeof TrackedOrder> | null> {
   const o = await db.order.findUnique({
     where: { orderNo: orderNo.toUpperCase() },
-    include: { items: { orderBy: { id: 'asc' } }, history: { orderBy: { createdAt: 'asc' } } },
+    include: {
+      items: { orderBy: { id: 'asc' } },
+      history: { orderBy: { createdAt: 'asc' } },
+      shipments: {
+        where: { state: { not: 'cancelled' }, consignmentId: { not: null } },
+        orderBy: { id: 'desc' },
+        take: 1,
+      },
+    },
   });
   if (!o || o.phone !== phone) return null;
+  const parcel = o.shipments[0];
   return {
     orderNo: o.orderNo,
     status: o.status,
@@ -34,5 +44,13 @@ export async function trackOrder(db: Db, orderNo: string, phone: string): Promis
     district: o.districtName,
     area: o.areaName,
     history: o.history.map((h) => ({ status: h.toStatus, at: h.createdAt.toISOString() })),
+    courier: parcel?.consignmentId
+      ? {
+          name: parcel.courier.startsWith('pathao') ? 'Pathao' : parcel.courier,
+          consignmentId: parcel.consignmentId,
+          status: parcel.statusLabel,
+          trackingUrl: parcel.courier === 'pathao' ? pathaoTrackingUrl(parcel.consignmentId, o.phone) : null,
+        }
+      : null,
   };
 }

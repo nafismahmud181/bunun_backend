@@ -48,6 +48,25 @@ export const AdminOrderList = z
   })
   .meta({ id: 'AdminOrderList' });
 
+export const AdminShipment = z
+  .object({
+    id: z.number().int(),
+    courier: z.string(),
+    state: z.enum(['booking', 'active', 'delivered', 'returned', 'cancelled']),
+    consignmentId: z.string().nullable(),
+    statusLabel: z.string().nullable(),
+    deliveryFee: z.number().int().nullable(),
+    codAmount: z.number().int(),
+    weightKg: z.number(),
+    note: z.string().nullable(),
+    lastError: z.string().nullable(),
+    trackingUrl: z.string().nullable(),
+    checkedAt: z.string().nullable(),
+    createdAt: z.string(),
+    events: z.array(z.object({ label: z.string(), source: z.string(), at: z.string() })),
+  })
+  .meta({ id: 'AdminShipment' });
+
 export const AdminOrderDetail = z
   .object({
     orderNo: z.string(),
@@ -66,6 +85,12 @@ export const AdminOrderDetail = z
       cancelled: z.number().int(),
       returned: z.number().int(),
       spent: Money.describe('Total of delivered orders'),
+      risk: z
+        .object({
+          level: z.enum(['new', 'good', 'watch', 'high']),
+          successRate: z.number().int().nullable().describe('Delivered ÷ (delivered + returned), %'),
+        })
+        .describe("This phone number's delivery record with the store"),
     }),
     address: z.object({
       division: z.string(),
@@ -103,6 +128,7 @@ export const AdminOrderDetail = z
     staffNotes: z.array(z.object({ id: z.number().int(), body: z.string(), by: z.string(), at: z.string() })),
     sms: z.array(z.object({ template: z.string(), status: z.string(), at: z.string(), sentAt: z.string().nullable() })),
     ip: z.string().nullable(),
+    shipments: z.array(AdminShipment).describe('Courier bookings, newest first'),
   })
   .meta({ id: 'AdminOrderDetail' });
 

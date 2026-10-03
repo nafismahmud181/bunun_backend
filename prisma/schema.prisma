@@ -302,6 +302,7 @@ model Order {
   couponCode     String?              @map("coupon_code")
   redemption     CouponRedemption?
   reviews        Review[]
+  shipments      Shipment[]
   createdById    Int?                 @map("created_by_id")
   createdBy      AdminUser?           @relation("OrdersEntered", fields: [createdById], references: [id], onDelete: SetNull)
   idempotencyKey String               @unique @map("idempotency_key")
@@ -606,4 +607,69 @@ model Page {
   updatedAt   DateTime @updatedAt @map("updated_at")
 
   @@map("pages")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Couriers (Phase 6): a parcel booked with a courier for an order.
+
+enum ShipmentState {
+  // Asked the courier; no answer yet (or the answer was lost). Blocks a second booking.
+  booking
+  // Booked; the courier's own status is in courierStatus.
+  active
+  delivered
+  returned
+  // Cancelled at the courier; the order can be booked again.
+  cancelled
+}
+
+model Shipment {
+  id            Int             @id @default(autoincrement())
+  orderId       Int             @map("order_id")
+  order         Order           @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  courier       String
+  state         ShipmentState   @default(booking)
+  consignmentId String?         @unique @map("consignment_id")
+  // The courier's status, e.g. "pickup_requested", "in_transit", with its label.
+  courierStatus String?         @map("courier_status")
+  statusLabel   String?         @map("status_label")
+  deliveryFee   Int?            @map("delivery_fee")
+  codAmount     Int             @map("cod_amount")
+  weightKg      Float           @map("weight_kg")
+  note          String?
+  lastError     String?         @map("last_error")
+  bookedById    Int?            @map("booked_by_id")
+  checkedAt     DateTime?       @map("checked_at")
+  events        ShipmentEvent[]
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+
+  @@index([orderId])
+  @@index([state, checkedAt])
+  @@map("shipments")
+}
+
+model ShipmentEvent {
+  id            Int      @id @default(autoincrement())
+  shipmentId    Int      @map("shipment_id")
+  shipment      Shipment @relation(fields: [shipmentId], references: [id], onDelete: Cascade)
+  courierStatus String   @map("courier_status")
+  label         String
+  source        String // "booking", "webhook", "sync", "staff"
+  createdAt     DateTime @default(now()) @map("created_at")
+
+  @@index([shipmentId, createdAt])
+  @@map("shipment_events")
+}
+
+// The courier's API tokens, encrypted with ADMIN_ENCRYPTION_KEY and shared by the API and the
+// worker, so they don't log in with the password on every start (Pathao asks for this).
+model CourierToken {
+  courier      String   @id
+  accessToken  String   @map("access_token")
+  refreshToken String?  @map("refresh_token")
+  expiresAt    DateTime @map("expires_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  @@map("courier_tokens")
 }

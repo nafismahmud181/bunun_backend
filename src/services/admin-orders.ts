@@ -7,6 +7,8 @@ import { getSettings } from '../lib/settings.js';
 import type { AdminOrderDetail, AdminOrderList, OrderEditBody, OrderListQuery } from '../schemas/admin-orders.js';
 import { trackUrl } from './checkout.js';
 import { releaseRedemption } from './coupons.js';
+import { pathaoTrackingUrl } from './courier/pathao.js';
+import { deliveryRisk } from '../lib/delivery-risk.js';
 import { deliveryFee, resolveArea } from './delivery.js';
 import { orderCancelledSms, orderConfirmedSms, orderShippedSms } from './sms/templates.js';
 
@@ -143,8 +145,13 @@ export async function exportOrdersCsv(db: Db, q: z.infer<typeof OrderListQuery>)
   return String.fromCharCode(0xfeff) + [header.map(csvCell).join(','), ...lines].join('\r\n') + '\r\n';
 }
 
+const ACTOR_NAMES: Record<string, string> = {
+  customer: 'Customer',
+  'courier:pathao': 'Pathao (courier)',
+  'courier:pathao-sandbox': 'Pathao sandbox (courier)',
+};
 const who = (a: { name: string } | null, actor?: string) =>
-  a?.name ?? (actor === 'customer' ? 'Customer' : (actor ?? 'System'));
+  a?.name ?? (actor ? (ACTOR_NAMES[actor] ?? actor) : 'System');
 
 async function findOrder(db: Pick<Db, 'order'>, orderNo: string) {
   const order = await db.order.findUnique({ where: { orderNo: orderNo.toUpperCase() } });
@@ -160,6 +167,7 @@ export async function getOrderDetail(db: Db, orderNo: string): Promise<z.infer<t
       history: { orderBy: { createdAt: 'asc' } },
       staffNotes: { orderBy: { createdAt: 'desc' }, include: { admin: { select: { name: true } } } },
       smsMessages: { orderBy: { createdAt: 'asc' } },
+      shipments: { orderBy: { id: 'desc' }, include: { events: { orderBy: { createdAt: 'asc' } } } },
     },
   });
   if (!o) throw new ApiError(404, 'ORDER_NOT_FOUND', 'Order not found.');
@@ -204,6 +212,7 @@ export async function getOrderDetail(db: Db, orderNo: string): Promise<z.infer<t
       cancelled: count('cancelled'),
       returned: count('returned'),
       spent: byStatus.find((g) => g.status === 'delivered')?._sum.total ?? 0,
+      risk: deliveryRisk({ delivered: count('delivered'), returned: count('returned') }),
     },
     address: {
       division: o.divisionName,
@@ -242,6 +251,22 @@ export async function getOrderDetail(db: Db, orderNo: string): Promise<z.infer<t
       sentAt: m.sentAt?.toISOString() ?? null,
     })),
     ip: o.ip,
+    shipments: o.shipments.map((s) => ({
+      id: s.id,
+      courier: s.courier,
+      state: s.state,
+      consignmentId: s.consignmentId,
+      statusLabel: s.statusLabel,
+      deliveryFee: s.deliveryFee,
+      codAmount: s.codAmount,
+      weightKg: s.weightKg,
+      note: s.note,
+      lastError: s.lastError,
+      trackingUrl: s.consignmentId && s.courier === 'pathao' ? pathaoTrackingUrl(s.consignmentId, o.phone) : null,
+      checkedAt: s.checkedAt?.toISOString() ?? null,
+      createdAt: s.createdAt.toISOString(),
+      events: s.events.map((e) => ({ label: e.label, source: e.source, at: e.createdAt.toISOString() })),
+    })),
   };
 }
 
@@ -250,6 +275,9 @@ interface ActionContext {
   ip: string;
   storefrontUrl: string;
 }
+
+/** Who moves an order on: a staff member, or the system (e.g. "courier:pathao" from a status update). */
+export type StatusContext = ActionContext | { admin: null; actor: string; ip?: undefined; storefrontUrl: string };
 
 /**
  * Moves an order to its next status. Cancelling puts the items back in stock; so does a return
@@ -260,9 +288,11 @@ export async function changeStatus(
   db: Db,
   orderNo: string,
   input: { to: OrderStatus; note?: string; restock: boolean },
-  ctx: ActionContext,
+  ctx: StatusContext,
 ) {
   const order = await findOrder(db, orderNo);
+  const adminId = ctx.admin?.id ?? null;
+  const actor = ctx.admin ? `admin:${ctx.admin.id}` : ctx.actor;
   const allowed = TRANSITIONS[order.status];
   if (!allowed.includes(input.to))
     throw new ApiError(409, 'INVALID_TRANSITION', `An order that is ${order.status} can't be marked ${input.to}.`, {
@@ -307,7 +337,7 @@ export async function changeStatus(
         fromStatus: order.status,
         toStatus: input.to,
         note: input.note || null,
-        actor: `admin:${ctx.admin.id}`,
+        actor,
       },
     });
     if (restock) {
@@ -320,7 +350,7 @@ export async function changeStatus(
             change: i.qty,
             reason: `order ${input.to}`,
             orderId: order.id,
-            adminId: ctx.admin.id,
+            adminId,
           },
         });
       }
@@ -331,7 +361,7 @@ export async function changeStatus(
         data: { to: order.phone, body: sms, template: `order_${input.to}`, orderId: order.id },
       });
     await audit(tx, {
-      adminId: ctx.admin.id,
+      adminId,
       action: 'order.status',
       entityType: 'order',
       entityId: order.orderNo,
@@ -339,6 +369,7 @@ export async function changeStatus(
         from: order.status,
         to: input.to,
         restocked: restock,
+        ...(!ctx.admin && { by: actor }),
         ...(couponReleased && { couponReleased: order.couponCode }),
         ...(input.note && { note: input.note }),
       },

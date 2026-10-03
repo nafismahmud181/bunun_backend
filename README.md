@@ -220,6 +220,48 @@ Routes under `/api/v1/admin` (details at `/docs`):
   - Days are Bangladesh time. Cancelled, returned and refunded orders don't count.
 - **Audit log** (`GET /audit`, `audit:read`): filters for person, action (`order.` matches a whole group), entity and dates.
 
+## Reports
+
+`GET /admin/reports?from=YYYY-MM-DD&to=YYYY-MM-DD` (`audit:read`: owners and managers) covers a range of Bangladesh-time days (default: the last 30, at most 366).
+
+- **Sales:** orders placed in the range, without cancelled, returned and refunded ones (the same rule as the dashboard).
+- **Summary:** orders, sales, average order, items sold, customers (new versus returning), discounts, delivery charged, return rate. Sales and orders are compared with the same number of days just before.
+- **Breakdowns:** sales per day (per month for ranges over 92 days), top 15 products, categories, channel (website, Facebook, WhatsApp, phone), and where the range's orders stand now.
+- **Money and couriers:**
+  - Cash on Delivery: collected, with the courier, or not shipped yet.
+  - Payment methods.
+  - Coupons used.
+  - Courier performance for parcels booked in the range: delivered, returned, success rate, average days to delivery, fees.
+
+## Courier (Pathao)
+
+Staff book a confirmed or packed order with Pathao from its admin page (`POST /admin/orders/:orderNo/shipments`).
+
+- **Setup:** set `PATHAO_CLIENT_ID`, `PATHAO_CLIENT_SECRET`, `PATHAO_USERNAME` and `PATHAO_PASSWORD` in `.env`; booking stays off until they are set.
+  - `PATHAO_BASE_URL` defaults to the sandbox, which accepts Pathao's published test account (see `.env.example`).
+  - Live: `https://api-hermes.pathao.com` with the credentials from Pathao Merchant → Developer's API.
+  - `PATHAO_STORE_ID` picks the pickup store (default: the account's default store).
+- **Tokens:** as Pathao asks, the access token is saved (encrypted with `ADMIN_ENCRYPTION_KEY`, table `courier_tokens`) and shared by the API and the worker.
+  - An expired token is renewed with the refresh token.
+  - The username and password are only used again if Pathao refuses the refresh token.
+- **What is sent:**
+  - the address (Pathao works out city, zone and area from it)
+  - the COD amount: the order total, or 0 once paid
+  - the weight: from the options' shipping weights, 0.5–10 kg, adjustable in the booking form
+  - the contents, the customer's delivery notes and an optional note for the rider
+- **Never booked twice:** Pathao accepts the same order number again, so the API locks the order row while it records the booking.
+  - If Pathao gives no clear answer, the booking stays "booking" and blocks another one, until staff check the Pathao panel and choose "It wasn't booked".
+  - A field error from Pathao (e.g. an invalid phone) frees the order at once and is shown to staff.
+- **Status sync:** background checks every `COURIER_SYNC_MINUTES` (default 15), plus the webhook.
+  - Webhook URL: `POST /api/v1/webhooks/pathao`. Set it in Pathao Merchant → Developer's API → Webhook, with `PATHAO_WEBHOOK_SECRET` as the secret; the API echoes it in `X-Pathao-Merchant-Webhook-Integration-Secret`.
+  - Pathao's signature header is the same for every merchant, so a webhook body is never trusted: it only triggers a fresh status request to Pathao's API.
+- **Order moves on:** picked up (or later) → **shipped**, delivered → **delivered** (COD paid), returned → **returned** (stock back), each with the usual SMS. These are recorded as "Pathao (courier)" in the order history and audit log.
+- **Cancelling:** if a parcel is cancelled in Pathao's panel, staff mark it cancelled on the order page, and the order can be booked again.
+- **Customers** see the courier, consignment number and a Pathao tracking link on the track page.
+- **Delivery-history check:** the order page rates the phone number from its delivered and returned orders with this store (new, reliable, watch, high risk; `src/lib/delivery-risk.ts`).
+  - Pathao has no public API for other merchants' history; a paid cross-courier checker can be added later.
+- **Tables:** `shipments` (one per booking) and `shipment_events` (status history).
+
 ## SMS
 
 Checkout writes the confirmation SMS to the `sms_messages` outbox in the same transaction as the order. A worker sends due messages every 5 seconds, retrying failures after 1, 2, 4 and 8 minutes and marking them `failed` after 5 attempts. The worker runs inside the API by default (`SMS_WORKER=inline`).
