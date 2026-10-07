@@ -5,6 +5,7 @@ import multipart from '@fastify/multipart';
 import rateLimit from '@fastify/rate-limit';
 import swagger from '@fastify/swagger';
 import swaggerUi from '@fastify/swagger-ui';
+import * as Sentry from '@sentry/node';
 import Fastify from 'fastify';
 import {
   jsonSchemaTransform,
@@ -53,7 +54,18 @@ export async function buildApp(
   courier: CourierDriver | null = createCourier(config, db),
 ) {
   const app = Fastify({
-    logger: { level: config.LOG_LEVEL },
+    logger: {
+      level: config.LOG_LEVEL,
+      // Log the path without its query string: order tracking and the cart quote carry phone numbers there.
+      serializers: {
+        req: (req) => ({
+          method: req.method,
+          url: req.url.split('?')[0],
+          host: req.host,
+          remoteAddress: req.ip,
+        }),
+      },
+    },
     trustProxy: config.TRUST_PROXY,
     // Product slugs can be up to 120 characters (admin) and are read as up to 200 (public routes);
     // Fastify's default of 100 answered longer ones with 414 URI Too Long.
@@ -105,8 +117,17 @@ export async function buildApp(
       });
     }
     const status = (err as { statusCode?: number }).statusCode ?? 500;
-    if (status >= 500) req.log.error({ err }, 'request failed');
-    return reply.send(err);
+    if (status < 500) return reply.send(err); // Fastify's own 4xx (bad JSON, too large…): safe to show
+    // Unexpected failures: details go to the log and Sentry, never to the visitor (they can name
+    // database tables, storage responses or settings).
+    req.log.error({ err }, 'request failed');
+    Sentry.captureException(err, { tags: { route: req.routeOptions.url ?? 'unknown' } });
+    return reply.code(500).send({
+      statusCode: 500,
+      error: 'Internal Server Error',
+      code: 'INTERNAL',
+      message: 'Something went wrong on our side. Please try again.',
+    });
   });
 
   await app.register(swagger, {

@@ -26,7 +26,7 @@ async function call(method: string, path: string, token: string | undefined, bod
     headers: token ? { authorization: `Bearer ${token}` } : {},
     ...(body !== undefined && { payload: body as object }),
   });
-  return { status: res.statusCode, body: res.json() };
+  return { status: res.statusCode, body: res.body ? res.json() : null };
 }
 async function uploadTo(
   path: string,
@@ -42,7 +42,7 @@ async function uploadTo(
     payload,
     headers: { ...headers, authorization: `Bearer ${token}` },
   });
-  return { status: res.statusCode, body: res.json() };
+  return { status: res.statusCode, body: res.body ? res.json() : null };
 }
 const png = (w: number, h: number) =>
   sharp({ create: { width: w, height: h, channels: 3, background: { r: 120, g: 40, b: 50 } } })

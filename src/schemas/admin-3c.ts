@@ -34,7 +34,7 @@ export const CustomerQuery = z.object({
     .enum(['true', 'false'])
     .optional()
     .transform((v) => (v === undefined ? undefined : v === 'true')),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(100_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
@@ -234,7 +234,7 @@ export const AuditQuery = z.object({
   entityId: z.string().trim().max(60).optional(),
   from: Day.optional(),
   to: Day.optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(100_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 

@@ -15,7 +15,7 @@ export const OrderListQuery = z.object({
   q: z.string().trim().max(100).optional().describe('Order number, phone or name'),
   from: Day.optional().describe('Placed on or after this day (Bangladesh time)'),
   to: Day.optional().describe('Placed on or before this day (Bangladesh time)'),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(100_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 

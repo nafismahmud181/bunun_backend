@@ -106,11 +106,25 @@ model ProductVariant {
   movements      InventoryMovement[]
   cartItems      CartItem[]
   orderItems     OrderItem[]
+  cost           VariantCost?
   createdAt      DateTime            @default(now()) @map("created_at")
   updatedAt      DateTime            @updatedAt @map("updated_at")
 
   @@index([productId])
   @@map("product_variants")
+}
+
+// What one unit of a variant costs the store (owner-only "Product profit" page): named lines such
+// as fabric and tailoring, and their total, kept for sorting and listing.
+model VariantCost {
+  variantId Int            @id @map("variant_id")
+  variant   ProductVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+  // [{ "label": "Fabric", "amount": 250 }, …]
+  lines     Json
+  unitCost  Float          @map("unit_cost")
+  updatedAt DateTime       @updatedAt @map("updated_at")
+
+  @@map("variant_costs")
 }
 
 model ProductImage {

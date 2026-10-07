@@ -239,7 +239,9 @@ describe.skipIf(!url)('part 5a: coupons, reviews, wishlist (database)', () => {
       expect(coupon.redemptions[0]).toMatchObject({ phone: buyer, amount: 150 });
       const again = await checkout(buyer, code('EID'));
       expect([again.status, again.body.message]).toEqual([400, "You've already used this coupon."]);
-      expect((await quote(code('EID'), buyer)).couponError).toBe("You've already used this coupon.");
+      // The quote doesn't take a phone (it would reveal who has ordered): its per-phone rules wait
+      // for checkout, so the quote still shows the discount.
+      expect((await quote(code('EID'), buyer)).couponError).toBeUndefined();
       // This phone has ordered before, so a first-order coupon doesn't apply.
       expect((await checkout(buyer, code('FIRST'))).body.message).toBe('This coupon is only for your first order.');
       expect((await checkout(newPhone(), code('FIRST'))).body).toMatchObject({ discount: 100, total: 2170 });

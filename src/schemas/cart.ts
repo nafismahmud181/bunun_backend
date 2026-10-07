@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Image, StockStatus } from './catalogue.js';
-import { BdPhone, CouponCode } from './orders.js';
+import { CouponCode } from './orders.js';
 
 const Money = z.number().int().describe('Whole taka');
 const Sku = z.string().regex(/^[A-Za-z0-9-]{1,64}$/);
@@ -43,7 +43,6 @@ export const SkuParams = z.object({ sku: Sku });
 export const QuoteQuery = z.object({
   areaId: z.coerce.number().int().positive().optional().describe('Without it, the quote has no delivery fee yet'),
   coupon: CouponCode.optional(),
-  phone: BdPhone.optional().describe('With a coupon: also checks its per-phone and first-order rules'),
 });
 export const Quote = z
   .object({

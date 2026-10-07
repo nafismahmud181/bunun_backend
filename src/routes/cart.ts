@@ -78,6 +78,8 @@ export const cartRoutes: FastifyPluginAsyncZod = async (app) => {
   app.get(
     '/cart/quote',
     {
+      // Each call can test a coupon code, so allow far fewer than the global 300 a minute.
+      config: { rateLimit: { max: 40, timeWindow: '1 minute' } },
       schema: {
         tags: ['cart'],
         summary: 'Delivery fee and total for the cart, delivered to an area',
@@ -98,9 +100,10 @@ export const cartRoutes: FastifyPluginAsyncZod = async (app) => {
       let couponError: string | undefined;
       if (req.query.coupon) {
         try {
+          // No phone here: its per-phone and first-order rules are checked at checkout, so this
+          // open endpoint can't be used to find out which numbers have ordered from the store.
           coupon = await checkCoupon(app.db, await findCoupon(app.db, req.query.coupon), {
             subtotal: view.subtotal,
-            phone: req.query.phone,
           });
         } catch (err) {
           if (!(err instanceof ApiError)) throw err;

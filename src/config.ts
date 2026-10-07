@@ -66,10 +66,23 @@ const Env = z
     PATHAO_WEBHOOK_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().optional()),
     // Check open parcels with Pathao this often (minutes); the webhook usually updates them sooner.
     COURIER_SYNC_MINUTES: z.coerce.number().int().min(1).max(1440).default(15),
+    // Sentry error tracking (sentry.io project → Client Keys). Off when empty.
+    SENTRY_DSN: z.preprocess((v) => (v === '' ? undefined : v), z.url().optional()),
+    // Shown in Sentry to tell staging from production, e.g. "staging".
+    SENTRY_ENVIRONMENT: z.preprocess((v) => (v === '' ? undefined : v), z.string().max(40).optional()),
   })
   .refine((c) => c.NODE_ENV !== 'production' || c.ADMIN_ENCRYPTION_KEY, {
     message: 'ADMIN_ENCRYPTION_KEY is required in production',
     path: ['ADMIN_ENCRYPTION_KEY'],
+  })
+  // Settings that are fine on a laptop but unsafe on a public server.
+  .refine((c) => c.NODE_ENV !== 'production' || c.RATE_LIMIT, {
+    message: 'RATE_LIMIT=off is not allowed in production',
+    path: ['RATE_LIMIT'],
+  })
+  .refine((c) => c.NODE_ENV !== 'production' || c.TRUST_PROXY !== true, {
+    message: 'TRUST_PROXY=true lets any visitor fake their IP; use "loopback" or the proxy addresses in production',
+    path: ['TRUST_PROXY'],
   });
 
 export type Config = z.infer<typeof Env>;

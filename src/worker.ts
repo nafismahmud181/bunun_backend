@@ -1,5 +1,6 @@
 // Standalone background worker (SMS outbox, courier status sync) (`npm run worker`), for running it apart from the API with
 // SMS_WORKER=off on the API. By default the API runs the worker itself.
+import './instrument.js';
 import pino from 'pino';
 import { loadConfig } from './config.js';
 import { createPrisma } from './lib/prisma.js';

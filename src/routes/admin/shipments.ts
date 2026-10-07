@@ -110,7 +110,8 @@ export const adminShipmentRoutes: FastifyPluginAsyncZod = async (app) => {
   app.post(
     '/orders/:orderNo/shipments/:shipmentId/refresh',
     {
-      preHandler: requireAdmin('orders:read'),
+      // Can move the order to shipped/delivered and send SMS, so it's a write.
+      preHandler: requireAdmin('orders:write'),
       schema: {
         tags,
         headers,

@@ -2,6 +2,8 @@ import type { FastifyRequest } from 'fastify';
 import type { FastifyPluginAsyncZod } from 'fastify-type-provider-zod';
 import { z } from 'zod';
 import { ErrorBody } from '../../lib/errors.js';
+import { maskPhone } from '../../lib/mask.js';
+import { can } from '../../lib/permissions.js';
 import { requireAdmin } from '../../plugins/admin-auth.js';
 import { IdParam } from '../../schemas/admin-3c.js';
 import {
@@ -26,6 +28,9 @@ export const adminMarketingRoutes: FastifyPluginAsyncZod = async (app) => {
     reply.header('Cache-Control', 'no-store');
   });
   const ctx = (req: FastifyRequest) => ({ admin: req.admin!, ip: req.ip });
+  // Customer phone numbers only for roles that may see customers; others get them masked.
+  const phoneFor = (req: FastifyRequest, permission: 'customers:read' | 'orders:read') => (phone: string) =>
+    can(req.admin!.role, permission) ? phone : maskPhone(phone);
   const errors = { 400: ErrorBody, 401: ErrorBody, 403: ErrorBody, 404: ErrorBody, 409: ErrorBody };
   const tags = ['admin'];
   const headers = AuthHeaders;
@@ -61,7 +66,11 @@ export const adminMarketingRoutes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: CouponDetail, ...errors },
       },
     },
-    async (req) => coupons.getCoupon(app.db, req.params.id),
+    async (req) => {
+      const coupon = await coupons.getCoupon(app.db, req.params.id);
+      const show = phoneFor(req, 'orders:read');
+      return { ...coupon, redemptions: coupon.redemptions.map((r) => ({ ...r, phone: show(r.phone) })) };
+    },
   );
   app.post(
     '/coupons',
@@ -125,7 +134,11 @@ export const adminMarketingRoutes: FastifyPluginAsyncZod = async (app) => {
         response: { 200: AdminReviewList, ...errors },
       },
     },
-    async (req) => listReviews(app.db, req.query),
+    async (req) => {
+      const list = await listReviews(app.db, req.query);
+      const show = phoneFor(req, 'customers:read');
+      return { ...list, items: list.items.map((r) => ({ ...r, phone: r.phone && show(r.phone) })) };
+    },
   );
   app.patch(
     '/reviews/:id',
@@ -143,7 +156,7 @@ export const adminMarketingRoutes: FastifyPluginAsyncZod = async (app) => {
     async (req) => {
       const review = await moderateReview(app.db, req.params.id, req.body.status, ctx(req));
       refreshStore();
-      return review;
+      return { ...review, phone: review.phone && phoneFor(req, 'customers:read')(review.phone) };
     },
   );
   app.delete(

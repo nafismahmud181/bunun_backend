@@ -41,6 +41,26 @@ async function newSession(db: Db, adminId: number, stage: AdminSessionStage, ctx
 const WRONG_LOGIN = () => new ApiError(401, 'INVALID_LOGIN', 'Email or password is incorrect.');
 
 /**
+ * Counts a wrong password or a wrong two-factor code against the account (atomically, so guesses
+ * sent in parallel all count) and locks it for 15 minutes at MAX_FAILED_LOGINS. Codes count too, so
+ * someone who knows the password can't try codes forever by signing in again from new addresses.
+ */
+async function countFailure(db: Db, adminId: number, action: string, ctx: RequestContext) {
+  const { failedLogins } = await db.adminUser.update({
+    where: { id: adminId },
+    data: { failedLogins: { increment: 1 } },
+    select: { failedLogins: true },
+  });
+  const lock = failedLogins >= MAX_FAILED_LOGINS;
+  if (lock)
+    await db.adminUser.update({
+      where: { id: adminId },
+      data: { failedLogins: 0, lockedUntil: new Date(Date.now() + LOCK_MS) },
+    });
+  await audit(db, { adminId, action: lock ? 'auth.locked' : action, ip: ctx.ip });
+}
+
+/**
  * Step 1: email and password. Returns a short-lived token for step 2, plus the authenticator
  * setup details (otpauth URL and secret) if two-factor authentication isn't set up yet.
  */
@@ -50,20 +70,17 @@ export async function login(db: Db, key: string | undefined, email: string, pass
     await verifyPassword(await DUMMY_HASH, password);
     throw WRONG_LOGIN();
   }
-  if (admin.lockedUntil && admin.lockedUntil > new Date())
-    throw new ApiError(423, 'ACCOUNT_LOCKED', 'Too many wrong passwords. Try again in 15 minutes.');
+  const locked = !!admin.lockedUntil && admin.lockedUntil > new Date();
   if (!(await verifyPassword(admin.passwordHash, password))) {
-    const failed = admin.failedLogins + 1;
-    const lock = failed >= MAX_FAILED_LOGINS;
-    await db.adminUser.update({
-      where: { id: admin.id },
-      data: { failedLogins: lock ? 0 : failed, lockedUntil: lock ? new Date(Date.now() + LOCK_MS) : null },
-    });
-    await audit(db, { adminId: admin.id, action: lock ? 'auth.locked' : 'auth.login_failed', ip: ctx.ip });
+    // While locked, a wrong password gets the same answer as an unknown email, so the lock
+    // doesn't reveal which emails are staff accounts; only the right password learns of it.
+    if (!locked) await countFailure(db, admin.id, 'auth.login_failed', ctx);
     throw WRONG_LOGIN();
   }
+  if (locked) throw new ApiError(423, 'ACCOUNT_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.');
   if (!admin.active) throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
-  await db.adminUser.update({ where: { id: admin.id }, data: { failedLogins: 0, lockedUntil: null } });
+  // The failure count is reset only after the two-factor code too (verifyTwoFactor), so signing in
+  // again with a known password doesn't wipe the count of wrong codes.
 
   if (admin.totpEnabled) {
     return { stage: 'two_factor' as const, ...(await newSession(db, admin.id, 'two_factor', ctx)) };
@@ -94,20 +111,35 @@ export async function verifyTwoFactor(
     throw new ApiError(401, 'SESSION_EXPIRED', 'Your sign-in has expired. Please sign in again.');
   const admin = session.admin;
   if (!admin.totpSecret || !admin.active) throw new ApiError(401, 'SESSION_EXPIRED', 'Please sign in again.');
+  if (admin.lockedUntil && admin.lockedUntil > new Date())
+    throw new ApiError(423, 'ACCOUNT_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.');
 
   const result = await verifyTotp({ secret: decrypt(admin.totpSecret, key), token: code, epochTolerance: 30 });
-  // The TOTP time step the code belongs to; used to refuse a code that was already accepted.
+  // The TOTP time step the code belongs to; a code is accepted once only (stored as totpLastStep).
   const step = result.valid && 'timeStep' in result ? result.timeStep : null;
-  const reused = step !== null && admin.totpLastStep !== null && step <= admin.totpLastStep;
-  if (step === null || reused) {
-    const failed = session.failedCodes + 1;
-    if (failed >= MAX_FAILED_CODES) await db.adminSession.delete({ where: { id: session.id } });
-    else await db.adminSession.update({ where: { id: session.id }, data: { failedCodes: failed } });
-    await audit(db, { adminId: admin.id, action: 'auth.2fa_failed', ip: ctx.ip });
+  // Claim the step atomically: of two requests racing with the same code, only one succeeds.
+  const claimed =
+    step !== null &&
+    (
+      await db.adminUser.updateMany({
+        where: { id: admin.id, active: true, OR: [{ totpLastStep: null }, { totpLastStep: { lt: step } }] },
+        data: { totpEnabled: true, totpLastStep: step, lastLoginAt: new Date(), failedLogins: 0 },
+      })
+    ).count === 1;
+  if (!claimed) {
+    // The session may already be gone (a parallel request used up its tries).
+    const failedCodes =
+      (
+        await db.adminSession
+          .update({ where: { id: session.id }, data: { failedCodes: { increment: 1 } }, select: { failedCodes: true } })
+          .catch(() => null)
+      )?.failedCodes ?? MAX_FAILED_CODES;
+    if (failedCodes >= MAX_FAILED_CODES) await db.adminSession.deleteMany({ where: { id: session.id } });
+    await countFailure(db, admin.id, 'auth.2fa_failed', ctx);
     throw new ApiError(
       401,
-      failed >= MAX_FAILED_CODES ? 'SESSION_EXPIRED' : 'INVALID_CODE',
-      failed >= MAX_FAILED_CODES
+      failedCodes >= MAX_FAILED_CODES ? 'SESSION_EXPIRED' : 'INVALID_CODE',
+      failedCodes >= MAX_FAILED_CODES
         ? 'Too many wrong codes. Please sign in again.'
         : 'That code is not right. Try the current one.',
     );
@@ -115,10 +147,7 @@ export async function verifyTwoFactor(
 
   const enrolling = session.stage === 'two_factor_setup';
   await db.adminSession.delete({ where: { id: session.id } });
-  const updated = await db.adminUser.update({
-    where: { id: admin.id },
-    data: { totpEnabled: true, totpLastStep: step, lastLoginAt: new Date() },
-  });
+  const updated = await db.adminUser.findUniqueOrThrow({ where: { id: admin.id } });
   await audit(db, { adminId: admin.id, action: enrolling ? 'auth.2fa_enabled' : 'auth.login', ip: ctx.ip });
   return { ...(await newSession(db, admin.id, 'active', ctx)), admin: adminView(updated) };
 }

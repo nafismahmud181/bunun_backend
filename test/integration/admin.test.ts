@@ -208,6 +208,43 @@ describe.skipIf(!url)('admin API (database)', () => {
       );
     });
 
+    it('answers a locked account’s wrong password like an unknown email', async () => {
+      // 'locked' was locked by the test above; only the right password learns that.
+      const wrong = await call('POST', '/admin/auth/login', { body: { email: email('locked'), password: 'nope' } });
+      expect([wrong.status, wrong.body.code]).toEqual([401, 'INVALID_LOGIN']);
+    });
+
+    it('counts wrong codes against the account, so signing in again doesn’t give endless tries', async () => {
+      await db!.adminUser.create({
+        data: { email: email('guesser'), name: 'G', role: 'order_handler', passwordHash: await hashPassword(PASSWORD) },
+      });
+      for (let round = 0; round < 2; round++) {
+        const login = await call('POST', '/admin/auth/login', {
+          body: { email: email('guesser'), password: PASSWORD },
+        });
+        expect(login.status).toBe(200);
+        for (let i = 0; i < 5; i++)
+          await call('POST', '/admin/auth/2fa', { token: login.body.token, body: { code: '000000' } });
+      }
+      const after = await call('POST', '/admin/auth/login', { body: { email: email('guesser'), password: PASSWORD } });
+      expect([after.status, after.body.code]).toEqual([423, 'ACCOUNT_LOCKED']);
+    });
+
+    it('accepts a code only once even when two sign-ins send it at the same moment', async () => {
+      await db!.adminUser.create({
+        data: { email: email('racer'), name: 'R', role: 'order_handler', passwordHash: await hashPassword(PASSWORD) },
+      });
+      const { secret } = await signIn('racer');
+      const a = await call('POST', '/admin/auth/login', { body: { email: email('racer'), password: PASSWORD } });
+      const b = await call('POST', '/admin/auth/login', { body: { email: email('racer'), password: PASSWORD } });
+      const code = await generate({ secret, epoch: Math.floor(Date.now() / 1000) + 30 }); // a step not used yet
+      const results = await Promise.all([
+        call('POST', '/admin/auth/2fa', { token: a.body.token, body: { code } }),
+        call('POST', '/admin/auth/2fa', { token: b.body.token, body: { code } }),
+      ]);
+      expect(results.map((r) => r.status).sort()).toEqual([200, 401]);
+    });
+
     it('only full sessions reach the API, and logout ends them', async () => {
       const half = await call('POST', '/admin/auth/login', { body: { email: email('owner'), password: PASSWORD } });
       expect((await call('GET', '/admin/auth/me', { token: half.body.token })).status).toBe(401);

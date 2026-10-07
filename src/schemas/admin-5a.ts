@@ -130,7 +130,7 @@ export const AdminReview = z
 export const ReviewListQuery = z.object({
   status: ReviewStatus.default('pending'),
   productId: z.coerce.number().int().positive().optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(100_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
 });
 

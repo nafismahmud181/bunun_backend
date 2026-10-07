@@ -249,6 +249,13 @@ export async function refreshShipment(
 }
 
 /** Refresh one parcel by the courier's consignment ID (webhook). Unknown IDs are ignored. */
+// Anyone can call the webhook with a consignment id (they're on the public tracking page), so a
+// parcel is checked with Pathao at most once per WEBHOOK_MIN_GAP_MS from webhook calls; a flood
+// can't use up the API quota. Kept per process (it's only a brake), and only for webhooks: the
+// regular sync never delays a real update that arrives just after it.
+const WEBHOOK_MIN_GAP_MS = 10_000;
+const lastWebhookCheck = new Map<string, number>();
+
 export async function refreshByConsignment(
   db: Db,
   courier: CourierDriver,
@@ -256,9 +263,15 @@ export async function refreshByConsignment(
   storefrontUrl: string,
   log?: FastifyBaseLogger,
 ) {
+  const now = Date.now();
+  if (now - (lastWebhookCheck.get(consignmentId) ?? 0) < WEBHOOK_MIN_GAP_MS) return false;
+  if (lastWebhookCheck.size > 5000)
+    for (const [id, at] of lastWebhookCheck) if (now - at >= WEBHOOK_MIN_GAP_MS) lastWebhookCheck.delete(id);
+  lastWebhookCheck.set(consignmentId, now); // before any await, so calls arriving together see it
   const s = await db.shipment.findUnique({ where: { consignmentId } });
-  if (s) await refreshShipment(db, courier, s, 'webhook', storefrontUrl, log);
-  return !!s;
+  if (!s) return false;
+  await refreshShipment(db, courier, s, 'webhook', storefrontUrl, log);
+  return true;
 }
 
 /** Checks open parcels not looked at for `everyMinutes`, a batch at a time. */

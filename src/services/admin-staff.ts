@@ -1,6 +1,6 @@
 import { verify as verifyPassword } from '@node-rs/argon2';
 import type { z } from 'zod';
-import type { AdminUser } from '../generated/prisma/client.js';
+import type { AdminUser, Prisma } from '../generated/prisma/client.js';
 import { audit } from '../lib/audit.js';
 import { sha256 } from '../lib/crypto.js';
 import { ApiError } from '../lib/errors.js';
@@ -56,11 +56,20 @@ export async function inviteStaff(db: Db, input: z.infer<typeof StaffCreate>, ct
 }
 
 /** The shop must always keep at least one active owner. */
-async function assertOwnerRemains(db: Db, target: AdminUser, next: { role?: string; active?: boolean }) {
+const OWNER_LOCK = 7_310_001; // any fixed number, used only for this lock
+
+async function assertOwnerRemains(
+  tx: Prisma.TransactionClient,
+  target: AdminUser,
+  next: { role?: string; active?: boolean },
+) {
   const losesOwner =
     target.role === 'owner' && target.active && ((next.role && next.role !== 'owner') || next.active === false);
   if (!losesOwner) return;
-  const owners = await db.adminUser.count({ where: { role: 'owner', active: true } });
+  // One owner change at a time (lock held until the transaction ends), so two owners can't
+  // disable each other at the same moment and leave the store with none.
+  await tx.$executeRaw`SELECT pg_advisory_xact_lock(${OWNER_LOCK})`;
+  const owners = await tx.adminUser.count({ where: { role: 'owner', active: true } });
   if (owners <= 1)
     throw new ApiError(409, 'LAST_OWNER', 'Keep at least one active owner: make someone else an owner first.');
 }
@@ -70,8 +79,8 @@ export async function updateStaff(db: Db, id: number, input: z.infer<typeof Staf
   if (!target) throw new ApiError(404, 'NOT_FOUND', 'Staff member not found.');
   if (id === ctx.admin.id && (input.active === false || (input.role && input.role !== target.role)))
     throw new ApiError(409, 'SELF_CHANGE', "You can't disable yourself or change your own role.");
-  await assertOwnerRemains(db, target, input);
   await db.$transaction(async (tx) => {
+    await assertOwnerRemains(tx, target, input);
     await tx.adminUser.update({ where: { id }, data: input });
     // Disabling or changing someone's role signs them out, so the change applies at once.
     if (input.active === false || (input.role && input.role !== target.role))

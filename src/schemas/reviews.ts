@@ -33,7 +33,7 @@ export const ProductReviews = z
   .meta({ id: 'ProductReviews' });
 
 export const ProductReviewsQuery = z.object({
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
 

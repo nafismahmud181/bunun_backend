@@ -119,7 +119,8 @@ describe.skipIf(!url)('part 6a: courier booking and tracking (database)', () => 
       order_status: 'Returned', // ignored
     });
     expect(hook.status).toBe(202);
-    expect(hook.headers['x-pathao-merchant-webhook-integration-secret']).toBe('hook-secret');
+    // The secret is echoed only for Pathao's integration check, not to anyone who posts.
+    expect(hook.headers['x-pathao-merchant-webhook-integration-secret']).toBeUndefined();
     await new Promise((r) => setTimeout(r, 500)); // the refresh runs after the reply
     o = (await call('GET', `/admin/orders/${orderNo}`, handler)).body;
     expect(o).toMatchObject({ status: 'delivered', paymentStatus: 'paid' });
@@ -130,6 +131,7 @@ describe.skipIf(!url)('part 6a: courier booking and tracking (database)', () => 
     expect(tracked.courier).toMatchObject({ name: 'Pathao', consignmentId, status: 'Delivered' });
     const integration = await call('POST', '/webhooks/pathao', undefined, { event: 'webhook_integration' });
     expect(integration.status).toBe(202);
+    expect(integration.headers['x-pathao-merchant-webhook-integration-secret']).toBe('hook-secret');
   });
 
   it('frees the order when the courier refuses, and holds it when the courier gives no answer', async () => {
@@ -155,5 +157,16 @@ describe.skipIf(!url)('part 6a: courier booking and tracking (database)', () => 
     const third = await confirmedOrder();
     const risk = (await call('GET', `/admin/orders/${third}`, handler)).body.customer.risk;
     expect(risk).toEqual({ level: 'good', successRate: 100 }); // one delivered so far
+  });
+
+  it('asks the courier once for a burst of webhook calls about the same parcel', async () => {
+    const order = await confirmedOrder();
+    await call('POST', `/admin/orders/${order}/shipments`, handler, {});
+    const id = (await call('GET', `/admin/orders/${order}`, handler)).body.shipments[0].consignmentId as string;
+    const before = courier.statusCalls;
+    for (let i = 0; i < 5; i++)
+      await call('POST', '/webhooks/pathao', undefined, { event: 'order.in_transit', consignment_id: id });
+    await new Promise((r) => setTimeout(r, 300)); // the refresh runs after the reply
+    expect(courier.statusCalls - before).toBe(1);
   });
 });

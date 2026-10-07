@@ -66,6 +66,8 @@ export function fakeCourier() {
   let failNext: 'rejected' | 'unavailable' | null = null;
   const driver: CourierDriver & {
     parcels: typeof parcels;
+    /** How many times the status was asked for. */
+    statusCalls: number;
     setStatus(consignmentId: string, status: string): void;
     failNext(kind: 'rejected' | 'unavailable'): void;
   } = {
@@ -73,6 +75,7 @@ export function fakeCourier() {
     label: 'Pathao',
     mode: 'sandbox',
     parcels,
+    statusCalls: 0,
     async book(p: Parcel): Promise<Booked> {
       if (failNext === 'rejected') {
         failNext = null;
@@ -89,6 +92,7 @@ export function fakeCourier() {
       return { consignmentId, status: 'pending', statusLabel: pathaoLabel('pending'), deliveryFee: 60 };
     },
     async status(consignmentId: string): Promise<CourierStatus> {
+      driver.statusCalls++;
       const p = parcels.get(consignmentId);
       const status = p?.status ?? 'pending';
       return { status, statusLabel: pathaoLabel(status) };

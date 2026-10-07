@@ -42,6 +42,14 @@ import { reportRange, salesReport } from '../../services/reports.js';
 import { ReportQuery, SalesReport } from '../../schemas/reports.js';
 import { ProfitPlan, ProfitPlanReply } from '../../schemas/profit-plan.js';
 import { getProfitPlan, saveProfitPlan } from '../../services/profit-plan.js';
+import {
+  CostedVariant,
+  ProductCostList,
+  ProductCostQuery,
+  VariantCostBody,
+  VariantCostParam,
+} from '../../schemas/product-costs.js';
+import { listProductCosts, saveVariantCost } from '../../services/product-costs.js';
 import { createManualOrder } from '../../services/manual-orders.js';
 import { notifyStorefront } from '../../services/revalidate.js';
 
@@ -474,6 +482,39 @@ export const adminManagementRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req) => saveProfitPlan(app.db, req.body, ctx(req)),
+  );
+
+  // ---------- Product profit (owner only: what each product costs) ----------
+
+  app.get(
+    '/product-costs',
+    {
+      preHandler: settingsWrite,
+      schema: {
+        tags,
+        headers,
+        summary: 'Products with each size’s price and cost',
+        querystring: ProductCostQuery,
+        response: { 200: ProductCostList, ...errors },
+      },
+    },
+    async (req) => listProductCosts(app.db, req.query),
+  );
+
+  app.put(
+    '/product-costs/:variantId',
+    {
+      preHandler: settingsWrite,
+      schema: {
+        tags,
+        headers,
+        summary: 'Save what one unit of a product size costs (no lines clears it)',
+        params: VariantCostParam,
+        body: VariantCostBody,
+        response: { 200: z.object({ cost: CostedVariant.shape.cost }), ...errors },
+      },
+    },
+    async (req) => saveVariantCost(app.db, req.params.variantId, req.body, ctx(req)),
   );
 
   app.get(

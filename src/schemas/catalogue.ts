@@ -92,7 +92,7 @@ export const ProductListQuery = z.object({
     .optional()
     .describe('Only these products, e.g. for a wishlist (unknown or hidden ones are left out)'),
   sort: ProductSort.default('featured'),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(1000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(24),
 });
 

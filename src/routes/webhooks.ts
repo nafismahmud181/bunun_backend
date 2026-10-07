@@ -18,10 +18,10 @@ export const webhookRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req, reply) => {
-      // Pathao checks the integration by expecting this header back with the secret it was given.
-      if (app.config.PATHAO_WEBHOOK_SECRET)
-        reply.header('X-Pathao-Merchant-Webhook-Integration-Secret', app.config.PATHAO_WEBHOOK_SECRET);
       const { event, consignment_id: consignmentId } = req.body;
+      // Pathao checks the integration by expecting this header back with the secret it was given.
+      if (event === 'webhook_integration' && app.config.PATHAO_WEBHOOK_SECRET)
+        reply.header('X-Pathao-Merchant-Webhook-Integration-Secret', app.config.PATHAO_WEBHOOK_SECRET);
       if (event !== 'webhook_integration' && consignmentId && app.courier) {
         const courier = app.courier;
         // Don't make Pathao wait (it allows 10 s): refresh in the background.

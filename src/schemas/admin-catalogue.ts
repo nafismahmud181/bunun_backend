@@ -82,7 +82,7 @@ export const AdminProductQuery = z.object({
   q: z.string().trim().max(100).optional().describe('Name, slug or SKU'),
   categoryId: Id.optional(),
   status: ProductStatus.optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(100_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(25),
 });
 
@@ -212,7 +212,7 @@ export const InventoryQuery = z.object({
     .optional()
     .transform((v) => v === 'true')
     .describe('Only variants at or below the low-stock threshold'),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(100_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 
@@ -255,7 +255,7 @@ export const StockChange = z
 
 export const MovementQuery = z.object({
   sku: z.string().trim().max(64).optional(),
-  page: z.coerce.number().int().min(1).default(1),
+  page: z.coerce.number().int().min(1).max(100_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(50),
 });
 

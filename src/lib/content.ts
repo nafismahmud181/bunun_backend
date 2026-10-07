@@ -9,7 +9,8 @@ export const Href = z
   .string()
   .trim()
   .max(300)
-  .refine((s) => (s.startsWith('/') && !s.startsWith('//')) || /^https:\/\/[^\s]+$/.test(s), {
+  // "//x" and "/\x" are links to another site, not store paths.
+  .refine((s) => /^\/(?![/\\])/.test(s) || /^https:\/\/[^\s]+$/.test(s), {
     message: 'Use a store path such as /shop or a full https:// address.',
   });
 

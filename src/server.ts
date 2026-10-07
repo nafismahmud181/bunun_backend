@@ -1,3 +1,4 @@
+import './instrument.js';
 import { buildApp } from './app.js';
 import { loadConfig } from './config.js';
 import { createPrisma } from './lib/prisma.js';
