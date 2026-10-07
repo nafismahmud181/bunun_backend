@@ -99,6 +99,8 @@ export async function buildApp(
     await app.register(rateLimit, {
       max: 300,
       timeWindow: '1 minute',
+      // Inherited by the stricter per-route limits too.
+      ...(config.RATE_LIMIT_ALLOWLIST.length && { allowList: config.RATE_LIMIT_ALLOWLIST }),
       // Thrown as an ApiError so the error handler below formats it like every other error.
       errorResponseBuilder: (_req, ctx) =>
         new ApiError(429, 'RATE_LIMITED', `Too many requests. Please try again in ${ctx.after}.`),

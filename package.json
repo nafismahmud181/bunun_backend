@@ -24,7 +24,9 @@
     "dev:worker": "tsx watch --env-file-if-exists=.env src/worker.ts",
     "admin:create": "tsx scripts/create-admin.ts",
     "storage:setup": "tsx scripts/setup-storage.ts",
-    "e2e:setup": "tsx scripts/e2e-setup.ts"
+    "e2e:setup": "tsx scripts/e2e-setup.ts",
+    "loadtest:prep": "tsx scripts/loadtest-prep.ts",
+    "loadtest:cleanup": "tsx scripts/loadtest-cleanup.ts"
   },
   "type": "module",
   "dependencies": {

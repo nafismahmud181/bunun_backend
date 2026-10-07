@@ -43,4 +43,26 @@ describe('rate limits', () => {
       ).toBe(401);
     await app.close();
   });
+
+  it('skip allowlisted IPs, including on routes with their own limit', async () => {
+    const config = loadConfig({
+      NODE_ENV: 'test',
+      DATABASE_URL: 'postgresql://t@localhost/t',
+      LOG_LEVEL: 'silent',
+      RATE_LIMIT_ALLOWLIST: '203.0.113.9, 127.0.0.1',
+    });
+    const app = await buildApp(config, fakeDb);
+    // app.inject comes from 127.0.0.1
+    for (let i = 0; i < 8; i++)
+      expect(
+        (
+          await app.inject({
+            method: 'POST',
+            url: '/api/v1/admin/auth/login',
+            payload: { email: 'a@b.c', password: 'x' },
+          })
+        ).statusCode,
+      ).toBe(401);
+    await app.close();
+  });
 });

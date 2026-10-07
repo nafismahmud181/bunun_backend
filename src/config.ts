@@ -28,6 +28,17 @@ const Env = z
       .enum(['on', 'off'])
       .default('on')
       .transform((v) => v === 'on'),
+    // Comma-separated client IPs exempt from the per-IP request limits (e.g. a load-test machine).
+    // Empty in normal use; the order fraud checks still apply.
+    RATE_LIMIT_ALLOWLIST: z
+      .string()
+      .default('')
+      .transform((s) =>
+        s
+          .split(',')
+          .map((ip) => ip.trim())
+          .filter(Boolean),
+      ),
     // Which proxies may set X-Forwarded-For (used for rate limits, fraud checks and the audit log).
     // "loopback" trusts only a proxy on the same machine (Caddy, the admin panel's server). Trusting
     // everyone would let any visitor fake their IP. Also accepts "true", "false" or comma-separated IPs/CIDRs.
