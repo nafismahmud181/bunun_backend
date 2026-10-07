@@ -23,7 +23,8 @@
     "worker": "node --env-file-if-exists=.env dist/worker.js",
     "dev:worker": "tsx watch --env-file-if-exists=.env src/worker.ts",
     "admin:create": "tsx scripts/create-admin.ts",
-    "storage:setup": "tsx scripts/setup-storage.ts"
+    "storage:setup": "tsx scripts/setup-storage.ts",
+    "e2e:setup": "tsx scripts/e2e-setup.ts"
   },
   "type": "module",
   "dependencies": {
