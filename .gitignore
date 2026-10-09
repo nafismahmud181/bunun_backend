@@ -6,3 +6,4 @@ src/generated/
 openapi.json
 loadtest/data.json
 loadtest/results/
+.env.production

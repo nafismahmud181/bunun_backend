@@ -7,28 +7,47 @@ Sibling repositories: `bunun_frontend` (storefront) and `bunun_admin` (admin pan
 ## Requirements
 
 - Node.js 24+
-- A Supabase project, or Docker for a local PostgreSQL
+- Docker (local development database)
+- The Supabase project, for production only
 
-## Database setup (Supabase)
+## Databases: development and production are separate
 
-1. Create a project in the **Singapore** region (closest to Bangladesh).
-2. In **Project Settings → Data API**, remove `public` from the exposed schemas (or turn the Data API off). The backend doesn't use it. Row-level security is also switched on by a migration as a second guard.
-3. In **Project Settings → Database → SSL configuration**, download the certificate and save it as `certs/supabase-ca.crt`. Turn on **Enforce SSL**.
-4. Copy `.env.example` to `.env` and fill in the two connection strings from **Connect**:
-   - `DATABASE_URL`: transaction pooler (port 6543), used by the running app
-   - `DIRECT_URL`: session pooler (port 5432), used only by `prisma migrate`
+| Where                      | Database                              | Settings from                   | Images bucket        |
+| -------------------------- | ------------------------------------- | ------------------------------- | -------------------- |
+| This computer, tests, CI   | Docker PostgreSQL on `localhost:5433` | `.env`                          | `product-images-dev` |
+| Production (Coolify)       | Supabase project `bunun` (Singapore)  | Coolify environment variables   | `product-images`     |
+| One-off jobs on production | Supabase                              | `.env.production` (git-ignored) | `product-images`     |
 
-To work offline instead, use the local Docker lines in `.env.example` and run `npm run db:up` (PostgreSQL on localhost:5433).
+**Guard:** unless `NODE_ENV=production`, the API, the worker, every script and `prisma` refuse a database that isn't on this computer (`src/lib/db-guard.ts`). A deliberate job against production sets `ALLOW_REMOTE_DATABASE=true`, which `.env.production` does, for example:
+
+```sh
+npm run db:deploy:prod                                         # apply new migrations to production
+npx tsx --env-file=.env.production scripts/create-admin.ts --email you@example.com --name "You"
+npx tsx --env-file=.env.production scripts/check-rls.ts
+```
+
+Admin accounts, orders and settings are separate too: create a local admin with `npm run admin:create`.
 
 ## First run
 
 ```sh
-cp .env.example .env # then fill it in (see above)
+cp .env.example .env # the Docker lines work as they are; add ADMIN_ENCRYPTION_KEY and the storage keys
 npm install          # also generates the Prisma client
+npm run db:up        # PostgreSQL in Docker on localhost:5433
 npm run db:deploy    # apply migrations
 npm run db:seed      # import the original 13-product catalogue
+npm run admin:create -- --email you@example.com --name "You" --role owner
 npm run dev          # http://localhost:4000
 ```
+
+## Production database setup (Supabase)
+
+1. Create a project in the **Singapore** region (closest to Bangladesh).
+2. In **Project Settings → Data API**, remove `public` from the exposed schemas (or turn the Data API off). The backend doesn't use it. Row-level security is also switched on by a migration as a second guard.
+3. In **Project Settings → Database → SSL configuration**, download the certificate and save it as `certs/supabase-ca.crt`. Turn on **Enforce SSL**.
+4. Put the two connection strings from **Connect** in Coolify and in `.env.production`:
+   - `DATABASE_URL`: transaction pooler (port 6543), used by the running app
+   - `DIRECT_URL`: session pooler (port 5432), used only by `prisma migrate`
 
 - Health check: http://localhost:4000/health
 - API docs (not in production): http://localhost:4000/docs
@@ -40,9 +59,10 @@ npm run dev          # http://localhost:4000
 | `dev`                                 | Run with reload on change                                                               |
 | `build` / `start`                     | Compile to `dist/` and run it                                                           |
 | `lint`, `format`, `typecheck`, `test` | Code checks (all run in CI)                                                             |
-| `db:up`                               | Start the local Docker PostgreSQL (offline alternative)                                 |
+| `db:up`                               | Start the local Docker PostgreSQL                                                       |
 | `db:migrate`                          | Create and apply a migration after editing `prisma/schema.prisma`                       |
-| `db:deploy`                           | Apply existing migrations (Supabase, staging, production)                               |
+| `db:deploy`                           | Apply existing migrations to the local database                                         |
+| `db:deploy:prod`                      | Apply existing migrations to production (reads `.env.production`)                       |
 | `db:seed`                             | Import the catalogue, locations, delivery zones and default settings; safe to run again |
 | `worker` / `dev:worker`               | Run the SMS outbox worker on its own (with `SMS_WORKER=off` on the API)                 |
 | `admin:create`                        | Create an admin account, or `--reset` one's password and two-factor setup               |
@@ -52,7 +72,7 @@ npm run dev          # http://localhost:4000
 | `openapi`                             | Write `openapi.json` for the frontend and admin repos                                   |
 | `test:integration`                    | API tests against a real database (`TEST_DATABASE_URL`)                                 |
 
-Integration tests need a migrated and seeded database. The local Docker one works:
+Integration tests need a migrated and seeded local database. The Docker one works:
 
 ```sh
 TEST_DATABASE_URL=postgresql://bunun:bunun@localhost:5433/bunun npm run test:integration
