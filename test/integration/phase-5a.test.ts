@@ -334,7 +334,10 @@ describe.skipIf(!url)('part 5a: coupons, reviews, wishlist (database)', () => {
       expect(mine(await publicList())).toBeUndefined();
       const after = (await call('GET', `/products/${slug}`)).body;
       expect(after.rating?.count ?? 0).toBe(product.rating.count - 1);
-      const log = await db!.auditLog.findMany({ where: { entityType: 'review', entityId: String(reviewId) } });
+      const log = await db!.auditLog.findMany({
+        where: { entityType: 'review', entityId: String(reviewId) },
+        orderBy: { id: 'asc' },
+      });
       expect(log.map((l) => l.action)).toEqual(['review.approve', 'review.reject']);
     });
 

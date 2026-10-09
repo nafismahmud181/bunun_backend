@@ -15,6 +15,8 @@ export const PERMISSIONS = [
   'settings:write',
   'staff:manage',
   'audit:read',
+  // Danger zone: delete orders, customers and other test data (owner only).
+  'data:reset',
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];

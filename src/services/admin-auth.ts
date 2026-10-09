@@ -61,6 +61,47 @@ async function countFailure(db: Db, adminId: number, action: string, ctx: Reques
 }
 
 /**
+ * Checks an authenticator code and uses it up: a code is accepted once only (its TOTP time step is
+ * stored as totpLastStep). The step is claimed atomically, so of two requests racing with the same
+ * code only one succeeds.
+ */
+async function claimCode(
+  db: Db,
+  key: string | undefined,
+  admin: AdminUser,
+  code: string,
+  extra: { totpEnabled?: boolean; lastLoginAt?: Date } = {},
+) {
+  if (!admin.totpSecret) return false;
+  const result = await verifyTotp({ secret: decrypt(admin.totpSecret, key), token: code, epochTolerance: 30 });
+  const step = result.valid && 'timeStep' in result ? result.timeStep : null;
+  if (step === null) return false;
+  const { count } = await db.adminUser.updateMany({
+    where: { id: admin.id, active: true, OR: [{ totpLastStep: null }, { totpLastStep: { lt: step } }] },
+    data: { ...extra, totpLastStep: step, failedLogins: 0 },
+  });
+  return count === 1;
+}
+
+/**
+ * Asks a signed-in admin for a fresh authenticator code before a dangerous action. A wrong code
+ * counts towards the same 15-minute lock as wrong sign-in codes.
+ */
+export async function confirmWithCode(
+  db: Db,
+  key: string | undefined,
+  admin: AdminUser,
+  code: string,
+  ctx: RequestContext,
+) {
+  if (admin.lockedUntil && admin.lockedUntil > new Date())
+    throw new ApiError(423, 'ACCOUNT_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.');
+  if (await claimCode(db, key, admin, code)) return;
+  await countFailure(db, admin.id, 'auth.2fa_failed', ctx);
+  throw new ApiError(400, 'INVALID_CODE', 'That code is not right. Wait for the next one and try again.');
+}
+
+/**
  * Step 1: email and password. Returns a short-lived token for step 2, plus the authenticator
  * setup details (otpauth URL and secret) if two-factor authentication isn't set up yet.
  */
@@ -114,18 +155,7 @@ export async function verifyTwoFactor(
   if (admin.lockedUntil && admin.lockedUntil > new Date())
     throw new ApiError(423, 'ACCOUNT_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.');
 
-  const result = await verifyTotp({ secret: decrypt(admin.totpSecret, key), token: code, epochTolerance: 30 });
-  // The TOTP time step the code belongs to; a code is accepted once only (stored as totpLastStep).
-  const step = result.valid && 'timeStep' in result ? result.timeStep : null;
-  // Claim the step atomically: of two requests racing with the same code, only one succeeds.
-  const claimed =
-    step !== null &&
-    (
-      await db.adminUser.updateMany({
-        where: { id: admin.id, active: true, OR: [{ totpLastStep: null }, { totpLastStep: { lt: step } }] },
-        data: { totpEnabled: true, totpLastStep: step, lastLoginAt: new Date(), failedLogins: 0 },
-      })
-    ).count === 1;
+  const claimed = await claimCode(db, key, admin, code, { totpEnabled: true, lastLoginAt: new Date() });
   if (!claimed) {
     // The session may already be gone (a parallel request used up its tries).
     const failedCodes =

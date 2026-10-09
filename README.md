@@ -227,6 +227,19 @@ Routes under `/api/v1/admin` (details at `/docs`):
   - which zone an area or a whole district uses: `PUT /delivery-zones/areas` and `PUT /delivery-zones/districts/:id`
   - the phone and IP block list: `/blocked`
   - Every change is audited with the old and new values, and refreshes the storefront.
+- **Danger zone** (`POST /data-reset`, `data:reset`, owner only): deletes test data, in one transaction.
+  - What it can delete, each optional:
+    - orders, with their shipments, SMS, reviews and photos, and coupon uses
+    - carts, and customers without orders
+    - coupons
+    - the audit log
+    - every other admin session (the caller stays signed in)
+  - Stock still held by deleted orders is put back.
+  - Order numbers restart at 1 once no orders are left.
+  - Needs a fresh two-factor code (wrong codes count towards the lock) and `confirm: "RESET"`.
+  - One `data.reset` audit entry records what was deleted.
+  - Never touches the catalogue, settings, zones, content, the block list or staff accounts.
+  - Doesn't cancel parcels booked with the courier.
 - **Staff** (`staff:manage`, owner only):
   - Invite: returns a 16-character one-time password once; the new member sets up 2FA at first sign-in.
   - Change role, or disable the account (both sign the person out).

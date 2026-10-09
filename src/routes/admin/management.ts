@@ -51,6 +51,9 @@ import {
 } from '../../schemas/product-costs.js';
 import { listProductCosts, saveVariantCost } from '../../services/product-costs.js';
 import { createManualOrder } from '../../services/manual-orders.js';
+import { DataResetBody, DataResetResult } from '../../schemas/data-reset.js';
+import { confirmWithCode } from '../../services/admin-auth.js';
+import { resetData } from '../../services/data-reset.js';
 import { notifyStorefront } from '../../services/revalidate.js';
 
 // Part 3c: manual orders, customers, settings, delivery zones, block list, staff, dashboard, audit log.
@@ -451,6 +454,32 @@ export const adminManagementRoutes: FastifyPluginAsyncZod = async (app) => {
       },
     },
     async (req) => salesReport(app.db, reportRange(req.query)),
+  );
+
+  // ---------- Danger zone (owner only): delete test data ----------
+
+  app.post(
+    '/data-reset',
+    {
+      preHandler: requireAdmin('data:reset'),
+      config: { rateLimit: { max: 5, timeWindow: '1 minute' } },
+      schema: {
+        tags,
+        headers,
+        summary: 'Delete orders, customers, coupons, the audit log or admin sessions (needs a fresh two-factor code)',
+        body: DataResetBody,
+        response: { 200: DataResetResult, 423: ErrorBody, ...errors },
+      },
+    },
+    async (req) => {
+      const { code, orders, customers, coupons, auditLog, sessions } = req.body;
+      const parts = { orders, customers, coupons, auditLog, sessions };
+      await confirmWithCode(app.db, app.config.ADMIN_ENCRYPTION_KEY, req.admin!, code, ctx(req));
+      const out = await resetData(app.db, app.images, parts, { ...ctx(req), sessionToken: bearerToken(req)! });
+      // Stock and review counts on the storefront changed.
+      refreshStore();
+      return out;
+    },
   );
 
   // ---------- Profit planner (owner only: costs and margins) ----------
