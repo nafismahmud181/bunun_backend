@@ -438,6 +438,7 @@ model AdminUser {
   ordersEntered Order[]        @relation("OrdersEntered")
   createdAt     DateTime       @default(now()) @map("created_at")
   updatedAt     DateTime       @updatedAt @map("updated_at")
+  telegramLinks TelegramLink[]
 
   @@map("admin_users")
 }
@@ -686,4 +687,18 @@ model CourierToken {
   updatedAt    DateTime @updatedAt @map("updated_at")
 
   @@map("courier_tokens")
+}
+
+// Telegram accounts signed in to the deploy bot (owner only). The fingerprint is a hash of the
+// admin's password hash and two-factor secret: changing either signs the Telegram account out.
+model TelegramLink {
+  telegramUserId BigInt    @id @map("telegram_user_id")
+  adminId        Int       @map("admin_id")
+  admin          AdminUser @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  fingerprint    String
+  createdAt      DateTime  @default(now()) @map("created_at")
+  lastUsedAt     DateTime  @default(now()) @map("last_used_at")
+
+  @@index([adminId])
+  @@map("telegram_links")
 }

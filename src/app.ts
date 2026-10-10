@@ -32,6 +32,7 @@ import { orderRoutes } from './routes/orders.js';
 import { reviewRoutes } from './routes/reviews.js';
 import { contentRoutes } from './routes/content.js';
 import { webhookRoutes } from './routes/webhooks.js';
+import { botRoutes } from './routes/bot.js';
 import { adminShipmentRoutes } from './routes/admin/shipments.js';
 import { type CourierDriver, createCourier } from './services/courier/index.js';
 import { storeRoutes } from './routes/store.js';
@@ -153,6 +154,7 @@ export async function buildApp(
   await app.register(reviewRoutes, { prefix: '/api/v1' });
   await app.register(contentRoutes, { prefix: '/api/v1' });
   await app.register(webhookRoutes, { prefix: '/api/v1' });
+  await app.register(botRoutes, { prefix: '/api/v1' });
   // Staff API. Every route requires a signed-in admin with the right permission (see plugins/admin-auth.ts).
   await app.register(adminAuthRoutes, { prefix: '/api/v1/admin' });
   await app.register(adminOrderRoutes, { prefix: '/api/v1/admin' });

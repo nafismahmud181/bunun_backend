@@ -102,6 +102,38 @@ export async function confirmWithCode(
 }
 
 /**
+ * Checks an email, password and authenticator code in one go, with the same answers, timing and
+ * lock as the two sign-in steps. For sign-ins that don't create an admin-panel session (the
+ * Telegram deploy bot). Returns the admin.
+ */
+export async function checkCredentials(
+  db: Db,
+  key: string | undefined,
+  input: { email: string; password: string; code: string },
+  ctx: RequestContext,
+) {
+  const admin = await db.adminUser.findUnique({ where: { email: input.email.trim().toLowerCase() } });
+  if (!admin) {
+    await verifyPassword(await DUMMY_HASH, input.password);
+    throw WRONG_LOGIN();
+  }
+  const locked = !!admin.lockedUntil && admin.lockedUntil > new Date();
+  if (!(await verifyPassword(admin.passwordHash, input.password))) {
+    if (!locked) await countFailure(db, admin.id, 'auth.login_failed', ctx);
+    throw WRONG_LOGIN();
+  }
+  if (locked) throw new ApiError(423, 'ACCOUNT_LOCKED', 'Too many wrong attempts. Try again in 15 minutes.');
+  if (!admin.active) throw new ApiError(403, 'ACCOUNT_DISABLED', 'This account has been disabled.');
+  if (!admin.totpEnabled)
+    throw new ApiError(403, 'TWO_FACTOR_NOT_SET_UP', 'Sign in to the admin panel once to set up two-factor first.');
+  if (!(await claimCode(db, key, admin, input.code))) {
+    await countFailure(db, admin.id, 'auth.2fa_failed', ctx);
+    throw new ApiError(400, 'INVALID_CODE', 'That code is not right. Wait for the next one and try again.');
+  }
+  return db.adminUser.findUniqueOrThrow({ where: { id: admin.id } });
+}
+
+/**
  * Step 1: email and password. Returns a short-lived token for step 2, plus the authenticator
  * setup details (otpauth URL and secret) if two-factor authentication isn't set up yet.
  */

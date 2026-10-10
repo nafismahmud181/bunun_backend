@@ -266,6 +266,21 @@ Routes under `/api/v1/admin` (details at `/docs`):
   - Coupons used.
   - Courier performance for parcels booked in the range: delivered, returned, success rate, average days to delivery, fees.
 
+## Telegram deploy bot
+
+The bot lives in its own repo (`bunun_deploybot`). It deploys and restarts the apps through Coolify, and asks this API who may use it.
+
+- **Routes:** `/api/v1/bot/*`. They need the `X-Bot-Secret` header, equal to `BOT_API_SECRET`. They return 404 while that isn't set, and are left out of `/docs`.
+- **`POST /bot/link`:** signs a Telegram account in with an admin's email, password and two-factor code.
+  - The checks, answers and 15-minute lock are the same as the admin sign-in.
+  - Only the **owner** may link.
+  - Links are stored in `telegram_links`.
+- **`POST /bot/session`:** the bot asks this before every command.
+  - A link stops working, and is removed, when the account is disabled or isn't the owner any more.
+  - It also stops when the password or the two-factor setup changes: the link keeps a fingerprint of both.
+- **`POST /bot/unlink`:** signs the Telegram account out (`/logout`).
+- **`POST /bot/audit`:** records each deploy or restart in the audit log, as `telegram.deploy` or `telegram.restart`.
+
 ## Courier (Pathao)
 
 Staff book a confirmed or packed order with Pathao from its admin page (`POST /admin/orders/:orderNo/shipments`).

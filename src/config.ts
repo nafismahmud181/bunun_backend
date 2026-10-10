@@ -63,6 +63,8 @@ const Env = z
     STORAGE_BUCKET: z.string().default('product-images'),
     // Shared with the storefront, which then refreshes its catalogue cache when products change.
     REVALIDATE_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(16).optional()),
+    // Shared with the Telegram deploy bot (bunun_deploybot); its /api/v1/bot routes are off when empty.
+    BOT_API_SECRET: z.preprocess((v) => (v === '' ? undefined : v), z.string().min(32).optional()),
     // Pathao courier (Phase 6). Booking is switched off until the client, user and password are set.
     // The sandbox (default) accepts Pathao's published test account; live is https://api-hermes.pathao.com.
     COURIER_DRIVER: z.enum(['pathao', 'fake']).default('pathao'),
