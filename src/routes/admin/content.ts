@@ -17,6 +17,7 @@ import {
   SectionProductsBody,
   PromosBody,
   SectionsBody,
+  ThemeBody,
   UploadedImage,
 } from '../../schemas/content.js';
 import {
@@ -59,7 +60,7 @@ export const adminContentRoutes: FastifyPluginAsyncZod = async (app) => {
   );
 
   const save =
-    <K extends 'hero' | 'promos' | 'homepage_sections' | 'faq'>(key: K) =>
+    <K extends 'hero' | 'promos' | 'homepage_sections' | 'faq' | 'theme'>(key: K) =>
     async (value: Parameters<typeof saveContent<K>>[3], req: FastifyRequest) => {
       const result = await saveContent(app.db, app.images, key, value, ctx(req));
       refreshStore();
@@ -116,6 +117,20 @@ export const adminContentRoutes: FastifyPluginAsyncZod = async (app) => {
     },
     async (req) => save('faq')(req.body.faq, req),
   );
+  app.put(
+    '/content/theme',
+    {
+      preHandler: editors,
+      schema: {
+        tags,
+        headers,
+        summary: "Save the storefront's colour palette",
+        body: ThemeBody,
+        response: { 200: AdminContent, ...errors },
+      },
+    },
+    async (req) => save('theme')(req.body, req),
+  );
   app.delete(
     '/content/:key',
     {
@@ -124,7 +139,7 @@ export const adminContentRoutes: FastifyPluginAsyncZod = async (app) => {
         tags,
         headers,
         summary: 'Put a block back to its default',
-        params: z.object({ key: z.enum(['hero', 'promos', 'homepage_sections', 'faq']) }),
+        params: z.object({ key: z.enum(['hero', 'promos', 'homepage_sections', 'faq', 'theme']) }),
         response: { 200: AdminContent, ...errors },
       },
     },

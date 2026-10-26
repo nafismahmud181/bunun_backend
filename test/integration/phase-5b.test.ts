@@ -155,6 +155,25 @@ describe.skipIf(!url)('part 5b: CMS (database)', () => {
     expect(pub.find((s: { key: string }) => s.key === 'story').visible).toBe(false);
   });
 
+  it('saves the colour palette, which the storefront only gets once someone changes it', async () => {
+    expect((await call('GET', '/content')).body.theme).toBeNull();
+    const admin = (await call('GET', '/admin/content', editor)).body;
+    expect(admin.theme.primary).toBe('#6b1e2e');
+    expect(admin.updatedAt.theme).toBeNull();
+
+    const theme = { ...admin.theme, primary: '#1F4E3D', accent: '#c8a24a' };
+    expect((await call('PUT', '/admin/content/theme', handler, theme)).status).toBe(403);
+    expect((await call('PUT', '/admin/content/theme', editor, { ...theme, accent: 'red' })).status).toBe(400);
+    expect((await call('PUT', '/admin/content/theme', editor, { ...theme, accent: '#abc' })).status).toBe(400);
+    expect((await call('PUT', '/admin/content/theme', editor, { ...theme, footer: undefined })).status).toBe(400);
+
+    expect((await call('PUT', '/admin/content/theme', editor, theme)).status).toBe(200);
+    expect((await call('GET', '/content')).body.theme).toMatchObject({ primary: '#1f4e3d', accent: '#c8a24a' });
+
+    await call('DELETE', '/admin/content/theme', editor);
+    expect((await call('GET', '/content')).body.theme).toBeNull();
+  });
+
   it('saves the FAQ with placeholders', async () => {
     const faq = [{ q: 'Can I call you?', a: 'Yes, call {hotline} any day.' }];
     expect((await call('PUT', '/admin/content/faq', editor, { faq })).status).toBe(200);
@@ -262,6 +281,8 @@ describe.skipIf(!url)('part 5b: CMS (database)', () => {
       'content.update:hero',
       'content.reset:hero',
       'content.update:homepage_sections',
+      'content.update:theme',
+      'content.reset:theme',
       'content.update:faq',
       'content.update:promos',
       'content.update:promos',

@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { Faq, FaqItem, Hero, HomeSections, PageSlug, Promos, SectionKey } from '../lib/content.js';
+import { Faq, FaqItem, Hero, HomeSections, PageSlug, Promos, SectionKey, Theme } from '../lib/content.js';
 
 export { PageSlug };
 
@@ -11,6 +11,7 @@ export const PublicContent = z
     promos: Promos,
     sections: HomeSectionList.describe('Homepage sections in display order'),
     faq: z.array(FaqItem).describe('Placeholders such as {hotline} are already filled in'),
+    theme: Theme.nullable().describe("Null while the built-in palette (the storefront's own CSS) is in use"),
   })
   .meta({ id: 'StoreContent' });
 
@@ -33,6 +34,7 @@ export const AdminContent = z
     promos: Promos,
     homepage_sections: HomeSectionList,
     faq: Faq,
+    theme: Theme,
     updatedAt: z.record(z.string(), z.string().nullable()).describe('Per block; null means the default is showing'),
     faqTokens: z.array(z.string()).describe('Placeholders allowed in FAQ answers'),
   })
@@ -42,6 +44,7 @@ export const HeroBody = Hero;
 export const PromosBody = z.object({ promos: Promos });
 export const SectionsBody = z.object({ sections: HomeSections });
 export const FaqBody = z.object({ faq: Faq });
+export const ThemeBody = Theme;
 
 export const AdminPageSummary = z
   .object({

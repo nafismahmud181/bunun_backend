@@ -79,6 +79,24 @@ export const FaqItem = z
   .meta({ id: 'FaqItem' });
 export const Faq = z.array(FaqItem).max(30);
 
+const HexColor = z
+  .string()
+  .trim()
+  .regex(/^#[0-9a-fA-F]{6}$/, { message: 'Use a colour like #6b1e2e.' })
+  .toLowerCase();
+
+/** The storefront's six base colours; it works out the lighter and darker shades from these. */
+export const Theme = z
+  .object({
+    primary: HexColor.describe('Header, buttons and links'),
+    accent: HexColor.describe('Highlights: search button, badges, stars'),
+    text: HexColor.describe('Body text; also the top bar and newsletter background'),
+    surface: HexColor.describe('Soft background behind sections'),
+    border: HexColor.describe('Lines and card borders'),
+    footer: HexColor.describe('Footer background'),
+  })
+  .meta({ id: 'ThemeColors' });
+
 export const CONTENT_DEFAULTS = {
   hero: {
     eyebrow: 'Festive Sale · Limited Time',
@@ -109,6 +127,15 @@ export const CONTENT_DEFAULTS = {
     },
   ],
   homepage_sections: SECTION_KEYS.map((key) => ({ key, visible: true })),
+  // The storefront's built-in "Nakshi" palette (maroon and gold), as in its globals.css.
+  theme: {
+    primary: '#6b1e2e',
+    accent: '#b8860b',
+    text: '#2a1a17',
+    surface: '#fbf6ef',
+    border: '#eadfd3',
+    footer: '#2a1a17',
+  },
   faq: [
     {
       q: 'Do you offer Cash on Delivery?',
@@ -136,10 +163,17 @@ export const CONTENT_DEFAULTS = {
   promos: z.input<typeof Promos>;
   homepage_sections: z.input<typeof HomeSections>;
   faq: z.input<typeof Faq>;
+  theme: z.input<typeof Theme>;
 };
 
 export type ContentKey = keyof typeof CONTENT_DEFAULTS;
-export const CONTENT_SCHEMAS = { hero: Hero, promos: Promos, homepage_sections: HomeSections, faq: Faq } as const;
+export const CONTENT_SCHEMAS = {
+  hero: Hero,
+  promos: Promos,
+  homepage_sections: HomeSections,
+  faq: Faq,
+  theme: Theme,
+} as const;
 export type Content = { [K in ContentKey]: z.infer<(typeof CONTENT_SCHEMAS)[K]> };
 
 /**

@@ -37,6 +37,7 @@ export async function publicContent(db: Db): Promise<z.infer<typeof PublicConten
     promos: content.promos,
     sections: content.homepage_sections,
     faq: content.faq.map((f) => ({ q: fillFaqTokens(f.q, live), a: fillFaqTokens(f.a, live) })),
+    theme: content.updatedAt.theme ? content.theme : null,
   };
 }
 
