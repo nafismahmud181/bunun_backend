@@ -172,7 +172,7 @@ describe.skipIf(!url)('admin API (database)', () => {
       });
       const first = await call('POST', '/admin/auth/login', { body: { email: email('codes'), password: PASSWORD } });
       expect(first.body.stage).toBe('two_factor_setup');
-      expect(first.body.setup.otpauthUrl).toMatch(/^otpauth:\/\/totp\/Bunon%20Admin:/);
+      expect(first.body.setup.otpauthUrl).toMatch(/^otpauth:\/\/totp\/BGD Mart%20Admin:/);
       const codes = [];
       for (let i = 0; i < 5; i++)
         codes.push(await call('POST', '/admin/auth/2fa', { token: first.body.token, body: { code: '000000' } }));
@@ -420,7 +420,7 @@ describe.skipIf(!url)('admin API (database)', () => {
       const order = await db!.order.findUniqueOrThrow({ where: { orderNo: no } });
       const r = await call('GET', `/admin/orders/export.csv?q=${order.phone}`, { token: owner });
       expect(r.headers['content-type']).toMatch(/^text\/csv/);
-      expect(r.headers['content-disposition']).toMatch(/attachment; filename="bunon-orders-\d{4}-\d{2}-\d{2}\.csv"/);
+      expect(r.headers['content-disposition']).toMatch(/attachment; filename="bgdmart-orders-\d{4}-\d{2}-\d{2}\.csv"/);
       const lines = String(r.body).replace(BOM, '').trim().split('\r\n');
       expect(lines[0]).toBe(
         '"Order","Placed","Name","Phone","District","Area","Items","Total","Status","Payment","Method","Source"',

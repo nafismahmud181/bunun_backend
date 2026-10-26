@@ -61,7 +61,7 @@ export const adminOrderRoutes: FastifyPluginAsyncZod = async (app) => {
       const day = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Dhaka' });
       reply
         .header('Content-Type', 'text/csv; charset=utf-8')
-        .header('Content-Disposition', `attachment; filename="bunon-orders-${day}.csv"`);
+        .header('Content-Disposition', `attachment; filename="bgdmart-orders-${day}.csv"`);
       return exportOrdersCsv(app.db, req.query);
     },
   );

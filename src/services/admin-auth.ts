@@ -13,7 +13,7 @@ export const IDLE_TTL_MS = 2 * 3600_000; // signed out after this long without a
 export const MAX_FAILED_LOGINS = 10; // wrong passwords before the account is locked…
 export const LOCK_MS = 15 * 60_000; // …for this long
 export const MAX_FAILED_CODES = 5; // wrong codes before the half-signed-in session is dropped
-const ISSUER = 'Bunon Admin';
+const ISSUER = 'BGD Mart Admin';
 
 export interface RequestContext {
   ip: string;

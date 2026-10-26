@@ -188,7 +188,7 @@ const outline = (...headings: string[]) => headings.map((h) => `## ${h}`).join('
 /** Starting structure for each page: headings only, for the owner to fill in (see ROADMAP Phase 2). */
 export const PAGE_DEFAULTS: Record<(typeof PAGE_SLUGS)[number], { title: string; body: string }> = {
   about: {
-    title: 'About Bunon',
+    title: 'About BGD Mart',
     body: outline('Our story', 'Our artisans', 'Business details', 'Contact us'),
   },
   privacy: {

@@ -135,7 +135,7 @@ export async function buildApp(
 
   await app.register(swagger, {
     openapi: {
-      info: { title: 'Bunun API', version: '0.1.0' },
+      info: { title: 'BGD Mart API', version: '0.1.0' },
       servers: [{ url: '/' }],
     },
     transform: jsonSchemaTransform,

@@ -162,11 +162,11 @@ describe.skipIf(!url)('admin part 3c (database)', () => {
       expect((await call('PATCH', '/admin/settings', manager, { hotline: '01700000000' })).status).toBe(403);
       const r = await call('PATCH', '/admin/settings', owner, {
         free_delivery_threshold: 2500,
-        store_name: 'Bunon Test',
+        store_name: 'BGD Mart Test',
       });
-      expect(r.body).toMatchObject({ free_delivery_threshold: 2500, store_name: 'Bunon Test' });
+      expect(r.body).toMatchObject({ free_delivery_threshold: 2500, store_name: 'BGD Mart Test' });
       const pub = await call('GET', '/settings');
-      expect(pub.body).toMatchObject({ freeDeliveryThreshold: 2500, store: { name: 'Bunon Test' } });
+      expect(pub.body).toMatchObject({ freeDeliveryThreshold: 2500, store: { name: 'BGD Mart Test' } });
       expect((await call('PATCH', '/admin/settings', owner, { store_email: 'not-an-email' })).status).toBe(400);
     });
 

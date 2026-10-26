@@ -1,6 +1,6 @@
-# Bunun backend
+# BGD Mart backend
 
-REST API for the Bunun store: Fastify + Zod + Prisma + PostgreSQL (hosted on Supabase). See `ROADMAP.md` in the project folder for the full plan.
+REST API for the BGD Mart store: Fastify + Zod + Prisma + PostgreSQL (hosted on Supabase). See `ROADMAP.md` in the project folder for the full plan.
 
 Sibling repositories: `bunun_frontend` (storefront) and `bunun_admin` (admin panel). They generate their typed API clients from this repo's `openapi.json`.
 
