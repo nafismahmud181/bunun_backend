@@ -14,7 +14,7 @@ Sibling repositories: `bunun_frontend` (storefront) and `bunun_admin` (admin pan
 
 | Where                      | Database                              | Settings from                   | Images bucket        |
 | -------------------------- | ------------------------------------- | ------------------------------- | -------------------- |
-| This computer, tests, CI   | Docker PostgreSQL on `localhost:5433` | `.env`                          | `product-images-dev` |
+| This computer, tests, CI   | Docker PostgreSQL on `localhost:15433` | `.env`                          | `product-images-dev` |
 | Production (Coolify)       | Supabase project `bunun` (Singapore)  | Coolify environment variables   | `product-images`     |
 | One-off jobs on production | Supabase                              | `.env.production` (git-ignored) | `product-images`     |
 
@@ -33,7 +33,7 @@ Admin accounts, orders and settings are separate too: create a local admin with 
 ```sh
 cp .env.example .env # the Docker lines work as they are; add ADMIN_ENCRYPTION_KEY and the storage keys
 npm install          # also generates the Prisma client
-npm run db:up        # PostgreSQL in Docker on localhost:5433
+npm run db:up        # PostgreSQL in Docker on localhost:15433
 npm run db:deploy    # apply migrations
 npm run db:seed      # import the original 13-product catalogue
 npm run admin:create -- --email you@example.com --name "You" --role owner
@@ -75,7 +75,7 @@ npm run dev          # http://localhost:4000
 Integration tests need a migrated and seeded local database. The Docker one works:
 
 ```sh
-TEST_DATABASE_URL=postgresql://bunun:bunun@localhost:5433/bunun npm run test:integration
+TEST_DATABASE_URL=postgresql://bunun:bunun@localhost:15433/bunun npm run test:integration
 ```
 
 ## API (v1)

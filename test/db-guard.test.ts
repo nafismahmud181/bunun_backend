@@ -5,9 +5,9 @@ const SUPABASE = 'postgresql://postgres.ref:pw@aws-0-ap-southeast-1.pooler.supab
 
 describe('database guard', () => {
   it('allows the local database in development and tests', () => {
-    expect(() => assertDatabaseAllowed('postgresql://bunun:bunun@localhost:5433/bunun', {})).not.toThrow();
+    expect(() => assertDatabaseAllowed('postgresql://bunun:bunun@localhost:15433/bunun', {})).not.toThrow();
     expect(() =>
-      assertDatabaseAllowed('postgresql://bunun:bunun@127.0.0.1:5433/bunun', { NODE_ENV: 'test' }),
+      assertDatabaseAllowed('postgresql://bunun:bunun@127.0.0.1:15433/bunun', { NODE_ENV: 'test' }),
     ).not.toThrow();
   });
 
